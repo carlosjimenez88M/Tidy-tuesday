@@ -1,12 +1,6 @@
 Xmen and Bechdel test Tidytuesday\#27
 ================
 
-    ## --- Compiling #TidyTuesday Information for 2020-06-30 ----
-
-    ## --- There are 7 files available ---
-
-    ## --- Starting Download ---
-
     ## 
     ##  Downloading file 1 of 7: `character_visualization.csv`
     ##  Downloading file 2 of 7: `characters.csv`
@@ -15,8 +9,6 @@ Xmen and Bechdel test Tidytuesday\#27
     ##  Downloading file 5 of 7: `issue_collaborators.csv`
     ##  Downloading file 6 of 7: `locations.csv`
     ##  Downloading file 7 of 7: `xmen_bechdel.csv`
-
-    ## --- Download complete ---
 
 ## Exploratory Data Analysis
 
@@ -118,4 +110,208 @@ by_character%>%
 
 ![](Xmen_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
-tal
+``` r
+by_character%>%
+  ggplot(aes(narrative_avg,
+             speech_avg,
+             color=Hero,
+             size=thought_avg))+
+  geom_point()+
+  geom_text_repel(aes(label=Hero))+
+  guides(color=FALSE,
+         size=FALSE)
+```
+
+![](Xmen_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+``` r
+by_character%>%
+  mutate(speech_ratio=speech_avg/thought_avg)%>%
+  ggplot(aes(depicted_issues,
+             speech_ratio,
+             color=Hero,
+             size=speech_ratio))+
+  geom_point()+
+  geom_text_repel(aes(label=Hero))+
+  scale_y_log10()+
+  guides(color=FALSE,
+         size=FALSE)+
+  labs(x= 'Number of issues depicted',
+       y='Relation Speech to tought',
+       title = 'Xmen Speech to Thought ratio')+
+  theme(plot.title = element_text(hjust = 0.5, color='blue'))
+```
+
+![](Xmen_files/figure-gfm/speech%20per%20character-1.png)<!-- -->
+
+``` r
+by_character_costume<-character_visualization%>%
+  group_by(Hero,costume)%>%
+  summarize(across(speech:depicted,
+                   list(total=sum,
+                        issues=~sum(.>0),
+                        avg = ~mean(.[depicted>0]))))%>%
+  ungroup()%>%
+  mutate(speech_thought_ratio = speech_avg / thought_avg)
+
+by_character_costume%>%
+  mutate(costume=factor(costume),
+         Hero=reorder_within(Hero,speech_total,costume))%>%
+  ggplot(aes(speech_total,
+             Hero,
+             color=costume))+
+  geom_errorbarh(aes(xmin=1,xmax=speech_total),height = 0,linetype = "dashed")+
+  geom_point(aes(size=speech_total))+
+  facet_wrap(~costume,scales = 'free')+
+  guides(color=FALSE,
+         size=FALSE)+
+  scale_y_reordered() +
+  scale_x_continuous(expand = c(0,0))+
+  labs(title ='Number of lines in/out costume per hero',
+       x='# of lines',
+       y='Heroes')
+```
+
+![](Xmen_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+``` r
+costume_ratios<-by_character_costume%>%
+  filter(speech_avg>0)%>%
+  group_by(Hero)%>%
+  summarize(costumes_ratio= speech_total[1]/speech_total[2])%>%
+  inner_join(by_character, by = "Hero")
+
+costume_ratios%>%
+  mutate(Hero=fct_reorder(Hero,costumes_ratio))%>%
+  ggplot(aes(costumes_ratio,Hero))+
+  geom_col(aes(fill=costumes_ratio>1))+
+  scale_x_log10()+
+  guides(fill=FALSE)+
+  labs(x='',
+       y='Costume- Speech ratio',
+       title = 'Trend to Speak per Xmen',
+       subtitle = 'in costume/out of costume')
+```
+
+![](Xmen_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+## Issues by Location
+
+``` r
+per_issue <- character_visualization %>%
+  group_by(issue) %>%
+  summarise(across(speech:depicted, sum)) %>%
+  ungroup()
+
+locations%>%
+  group_by(location=fct_lump(location,4))%>%
+  summarize(total=n())%>%
+  arrange(desc(total))%>%
+  filter(location!='Other')
+```
+
+    ## # A tibble: 5 x 2
+    ##   location                        total
+    ##   <fct>                           <int>
+    ## 1 X-Mansion                         100
+    ## 2 Danger Room                        27
+    ## 3 Space                              19
+    ## 4 Muir Island, Scotland              14
+    ## 5 Unspecified region in Australia    14
+
+## Model
+
+``` r
+set.seed(2020)
+X_mansion <- locations %>%
+  group_by(issue) %>%
+  summarise(mansion = "X-Mansion" %in% location)%>%
+  inner_join(per_issue)
+
+
+boots<-bootstraps(X_mansion, times=1000,apparent = TRUE)
+models <- boots %>%
+  mutate(
+    model = map(
+      splits,
+      ~ glm(mansion ~ speech + thought + narrative + depicted,
+        family = "binomial", data = analysis(.)
+      )
+    ),
+    coef_info = map(model, tidy)
+  )
+
+
+boot_coefs <- models %>%
+  unnest(coef_info)
+
+boot_coefs %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = fct_inorder(term)) %>%
+  ggplot(aes(estimate, fill = term)) +
+  geom_vline(
+    xintercept = 0, color = "gray50",
+    alpha = 0.6, lty = 2, size = 1.5
+  ) +
+  geom_histogram(alpha = 0.8, bins = 25, show.legend = FALSE) +
+  facet_wrap(~term, scales = "free") +
+  labs(
+    title = "Which issues contain the X-Mansion as a location?"
+  )
+```
+
+![](Xmen_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+## Bechdel test
+
+``` r
+bechdel<- per_issue %>%
+  inner_join(xmen_bechdel) %>%
+  mutate(pass_bechdel = if_else(pass_bechdel == "yes", TRUE, FALSE))%>%
+  select(-notes)
+```
+
+``` r
+set.seed(2020)
+bechdel_joined <- per_issue %>%
+  inner_join(xmen_bechdel) %>%
+  mutate(pass_bechdel = if_else(pass_bechdel == "yes", TRUE, FALSE))
+```
+
+    ## Joining, by = "issue"
+
+``` r
+boots <- bootstraps(bechdel_joined, times = 1000, apparent = TRUE)
+boot_models <- boots %>%
+  mutate(
+    model = map(
+      splits,
+      ~ glm(pass_bechdel ~ speech + thought + narrative + depicted,
+        family = "binomial", data = analysis(.)
+      )
+    ),
+    coef_info = map(model, tidy)
+  )
+
+boot_coefs <- boot_models %>%
+  unnest(coef_info)
+
+boot_coefs %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = fct_inorder(term)) %>%
+  ggplot(aes(estimate, fill = term)) +
+  geom_vline(
+    xintercept = 0, color = "gray50",
+    alpha = 0.6, lty = 2, size = 1.5
+  ) +
+  geom_histogram(alpha = 0.8, bins = 25, show.legend = FALSE) +
+  facet_wrap(~term, scales = "free") +
+  labs(
+    title = "Xmen Bechdel test?",
+    subtitle = '')
+```
+
+![](Xmen_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+  - Depicted term is less likey to pass the Bechdel test
+  - Speech and thought terms are more likely to pass the Bechdel Test.
