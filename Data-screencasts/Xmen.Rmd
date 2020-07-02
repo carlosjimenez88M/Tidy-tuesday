@@ -1,6 +1,5 @@
 ---
-title: "Xmen and Bechdel test/n Tidytuesday #27"
-subtitle: "Xmen and Bechdel test "
+title: "Xmen and Bechdel test \n Tidytuesday#27"
 output: github_document
 ---
 
@@ -8,24 +7,85 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## GitHub Documents
 
-This is an R Markdown format used for publishing markdown documents to GitHub. When you click the **Knit** button all R code chunks are run and a markdown file (.md) suitable for publishing to GitHub is generated.
-
-## Including Code
-
-You can include R code in the document as follows:
-
-```{r cars}
-summary(cars)
+```{r libraries, echo=FALSE, cache=FALSE,warning=FALSE,message=FALSE}
+library(tidyverse);
+library(tidymodels);
+library(ggrepel);
+library(ggraph);
+library(tidytuesdayR);
+library(skimr);
+theme_set(theme_classic())
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r, echo=FALSE, cache=FALSE}
+xmen<-tidytuesdayR::tt_load('2020-06-30')
+character_visualization<-xmen$character_visualization
+xmen_bechdel<-xmen$xmen_bechdel
+locations<- xmen$locations
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Exploratory Data Analysis
+
+```{r}
+skim(character_visualization)
+```
+
+```{r}
+character_visualization%>%
+  head()
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+character_visualization<-character_visualization%>%
+  separate(character,c('Hero','Secret_identity'),sep=' = ',fill='right')%>%
+  filter(!is.na(Secret_identity))
+
+by_character<-character_visualization%>%
+  group_by(Hero)%>%
+  summarize(across(speech:depicted,
+                   list(total=sum,
+                        issues=~sum(.>0),
+                        avg = ~mean(.[depicted>0]))))  
+
+by_character%>%
+  group_by(Hero)%>%
+  summarize(Speech_thought_ratio=speech_total/thought_total)%>%
+  ggplot(aes(fct_reorder(Hero,Speech_thought_ratio),Speech_thought_ratio))+
+  geom_errorbar(aes(ymin=0,ymax=Speech_thought_ratio), height = 0)+
+  geom_point(aes(size=Speech_thought_ratio,color=Speech_thought_ratio))+
+  coord_flip()+
+  guides(color=FALSE,size=FALSE)+
+  labs(x='',
+       title = 'Relation between Speech and thought per Hero')
+  
+```
+
+
+
+```{r, warning=FALSE, message=FALSE}
+by_character%>%
+  ggplot(aes(speech_avg,thought_avg))+
+  geom_line()+
+  geom_smooth()+
+  geom_point(aes(color=Hero,size=narrative_total))+
+  geom_text_repel(aes(label=Hero))+
+  expand_limits(x=5)+
+  guides(color=FALSE, 
+         size=FALSE)+
+  labs(x='Speech Average',
+       y= 'Thought Average',
+       title = 'Average Participation per Hero',
+       subtitle = 'for relation between thought and speech')+
+  theme(plot.title = element_text(hjust = 0.5, color='blue'))+
+  theme(plot.subtitle = element_text(hjust = 0.5, color='blue'))
+```
+
+
+
+
+
+
+
