@@ -1,0 +1,457 @@
+---
+title: "Coffe Rating \n tidytuesday #28"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=FALSE, cache=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse);
+library(tidymodels);
+library(tidymetrics);
+library(skimr);
+library(tidytext);
+library(AnomalyDetection);
+library(corrplot);
+library(ggrepel);
+library(broom);
+library(lubridate);
+theme_set(theme_light())
+```
+
+
+## Explorartory Data Analysis 
+
+
+```{r, echo=FALSE, cache=FALSE, warning=FALSE, message=FALSE}
+tuesdata <- tidytuesdayR::tt_load(2020, week = 28)
+coffee_ratings <- tuesdata$coffee_ratings
+coffee_ratings%>%
+  head()
+```
+
+
+
+```{r}
+coffee_ratings%>%
+  count(species,sort = TRUE)
+
+coffee_ratings%>%
+  count(country_of_origin,sort = TRUE)
+```
+
+
+
+```{r}
+coffee_ratings%>%
+  filter(!is.na(country_of_origin))%>%
+  group_by(country_of_origin,species)%>%
+  summarize(total=n())%>%
+  arrange(desc(total))%>%
+  ungroup()%>%
+  ggplot(aes(fct_reorder(country_of_origin,total),total,fill=species))+
+  geom_col(show.legend = TRUE)+
+  coord_flip()+
+  labs(x='',
+       y='Total',
+       title = 'Relation Between Contry and Coffe-Type',
+       caption = '#Undatascientistdice')
+```
+
+
+```{r}
+coffee_ratings%>%
+  filter(!is.na(country_of_origin))%>%
+  group_by(country_of_origin)%>%
+  summarize(avg_points=mean(total_cup_points))%>%
+  arrange(desc(avg_points))%>%
+  mutate(country_of_origin=fct_reorder(country_of_origin,avg_points))%>%
+  ggplot(aes(avg_points,country_of_origin,color=avg_points>mean(coffee_ratings$total_cup_points)))+
+  geom_errorbarh(aes(xmin=mean(coffee_ratings$total_cup_points),xmax=avg_points),height = 0)+
+  geom_vline(xintercept = mean(coffee_ratings$total_cup_points),linetype='dashed')+
+  geom_point()+
+  labs(y='',
+       x='Avegare Rating',
+       title = 'Average Rating Coffe per Contry',
+       caption = '#Undatascientistdice')+
+  guides(color=FALSE,
+         size=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+```{r}
+coffee_ratings%>%
+  filter(!is.na(country_of_origin))%>%
+  ggplot(aes(fct_reorder(country_of_origin,total_cup_points),total_cup_points,fill=country_of_origin))+
+  geom_boxplot(outlier.colour = 'red')+
+  coord_flip()+
+  labs(x='country',
+       y='Rating Scale Ratio')+
+  guides(fill=FALSE)
+```
+
+> Is necessary do an anomaly detection analysis
+
+
+```{r,echo=FALSE, cache=FALSE}
+coffe_anom<-AnomalyDetectionVec(coffee_ratings$total_cup_points,max_anoms = 0.4,direction = 'both',period = 12,plot = TRUE)
+coffe_anom$plot
+```
+
+
+
+
+```{r}
+coffee_ratings%>%
+  filter(!is.na(country_of_origin))%>%
+  filter(!total_cup_points %in% coffe_anom$anoms$anoms)%>%
+  mutate(country_of_origin=fct_reorder(country_of_origin,total_cup_points))%>%
+  ggplot(aes(total_cup_points,country_of_origin,fill=country_of_origin))+
+  geom_boxplot()+
+  guides(fill=FALSE)+
+  labs(x='Rating without anomalies',
+       y='Country',
+       title = 'Relation Between Country - Total Cup Points')
+```
+
+```{r}
+coffee_wa<-coffee_ratings%>%
+  filter(!is.na(country_of_origin))%>%
+  filter(!total_cup_points %in% coffe_anom$anoms$anoms)
+coffee_wa%>%
+  ggplot(aes(total_cup_points,fill=species))+
+  geom_histogram()+
+  facet_wrap(~species,scales = 'free')+
+  guides(fill=FALSE)
+```
+
+```{r}
+coffee_wa%>%
+  ggplot(aes(total_cup_points,fill=species))+
+  geom_histogram()+
+  facet_wrap(~country_of_origin,scales = 'free_y')+
+  guides(fill=FALSE)
+```
+
+
+
+```{r}
+coffee_cross<-coffee_wa%>%
+  group_by(country_of_origin)%>%
+  summarize(across(c(total_cup_points,aroma:moisture), list(
+    avg =mean,
+    total =sum,
+    median =median
+  )))
+
+coffee_cross%>%
+  arrange(desc(total_cup_points_avg))%>%
+  mutate(country_of_origin=fct_reorder(country_of_origin,aroma_total))%>%
+  ggplot(aes(aroma_total,country_of_origin,fill=total_cup_points_avg))+
+  geom_col()+
+  labs(fill='Average Rating',
+       y='Country')
+```
+
+With this Graph, I Understan that `Aroma` not is a faithfil factor for coffe quality. I love this input!! 
+😃
+
+### Explore some correlation 
+
+```{r}
+coffee_correlation<-coffee_wa%>%
+  select(total_cup_points,where(is.numeric))%>%
+  select(-c(category_one_defects,quakers,altitude_low_meters,altitude_high_meters,altitude_mean_meters))%>%
+  scale()%>%
+  cor()
+
+coffee_correlation
+```
+
+
+```{r,echo=FALSE, cache=FALSE}
+coffee_correlation%>%
+  corrplot(method = 'circle',type="upper",order="hclust")
+```
+
+
+With this correlation I think that I can develped some Feature Engineer. But First I need Undertad other insights😃
+
+
+```{r}
+coffee_cross%>%
+  ggplot(aes(flavor_avg,total_cup_points_avg))+
+  geom_jitter(alpha=1/3)+
+  geom_text_repel(aes(label=country_of_origin))
+```
+
+
+```{r}
+coffee_cross%>%
+  ggplot(aes(flavor_total,total_cup_points_avg))+
+  geom_jitter(alpha=1/3)+
+  geom_text_repel(aes(label=country_of_origin))+
+  labs(x='Flavor',
+       y='Avg Rating of Preference',
+       title = 'Relation Between Rating and Flavor')
+```
+
+
+I think that with `Aroma` can I develop a deeper analysis.
+
+
+
+```{r}
+coffee_cross%>%
+  ggplot(aes(aroma_avg,flavor_avg))+
+  geom_point(aes(size=total_cup_points_total,color=country_of_origin))+
+  geom_text_repel(aes(label=country_of_origin))+
+  labs(size='Total Rating',
+       x='Average Aroma',
+       y='Average Flavor',
+       title = 'Taste structure for coffee',
+       caption= '#Undatascientistdice')+
+  guides(color=FALSE)
+```
+
+
+
+This is interesting, a high rate of flavor or aroma it's not decisive to be better cataloged.
+
+```{r}
+coffee_cross%>%
+  ggplot(aes(aroma_avg,aftertaste_avg))+
+  geom_point(aes(size=total_cup_points_total,color=country_of_origin))+
+  geom_text_repel(aes(label=country_of_origin))+
+  labs(size='Total Rating',
+       x='Average Aroma',
+       y='Average Aftertaste',
+       title = "Taste structure for coffee",
+       caption= '#Undatascientistdice')+
+  guides(color=FALSE)
+```
+
+
+This is incredible insigths!! `Aftertaste grade` is the most importat for create new levels in the `rating`.
+
+
+
+## Feature Engineering
+
+
+
+```{r}
+coffee_wa$harvest_year<-as.numeric(coffee_wa$harvest_year)
+coffee_wa<-coffee_wa%>%
+  mutate(harvest_year=gsub("[^0-9.-]+","",harvest_year),
+         expiration=lubridate::mdy(expiration))
+
+numerical_features<-coffee_wa%>%
+  select(total_cup_points,where(is.numeric))%>%
+  select(-c(altitude_low_meters,altitude_high_meters,altitude_mean_meters))%>%
+  lm(total_cup_points~ ., data = .)%>%
+  tidy()%>%
+  filter(p.value<=.05)%>%
+  select(term)
+categorical_features<-  
+coffee_wa%>%
+  select(total_cup_points,where(is.character))%>%
+  select(-c(lot_number,ico_number,altitude,certification_address,certification_contact,unit_of_measurement))%>%
+  lm(total_cup_points~ ., data = .)%>%
+  tidy()%>%
+  filter(p.value<=.05)%>%
+  select(term)%>%
+  mutate(new_term=str_replace_all(term,('owner'),''),
+         new_term=str_replace_all(new_term,('country_of_origin'),''),
+         new_term=str_replace_all(new_term,('farm_name'),''),
+         new_term=str_replace_all(new_term,('mill'),''),
+         new_term=str_replace_all(new_term,('region'),''),
+         new_term=str_replace_all(new_term,('producer'),''),
+         new_term=str_replace_all(new_term,('grading_date'),''))%>%
+  select(new_term)
+  
+
+categorical_features
+```
+
+
+```{r}
+
+model_for_country<-coffee_wa%>%
+  select(total_cup_points,country_of_origin,any_of(numerical_features$term))%>%
+  group_by(country_of_origin)%>%
+  summarize(models=list(lm(total_cup_points~aroma+flavor+aftertaste+acidity+body+balance+uniformity+clean_cup+sweetness+cupper_points)))%>%
+  mutate(tidied=map(models,tidy))%>%
+  unnest(tidied)%>%
+  filter(p.value<=0.05)
+
+coffee_glance<-coffee_wa%>%
+  select(total_cup_points,country_of_origin,any_of(numerical_features$term))%>%
+  group_by(country_of_origin)%>%
+  summarize(models=list(lm(total_cup_points~aroma+flavor+aftertaste+acidity+body+balance+uniformity+clean_cup+sweetness+cupper_points)))%>%
+  mutate(glanced=map(models,broom::glance))%>%
+  unnest(glanced)%>%
+  filter(!is.na(r.squared),
+         !is.na(adj.r.squared))
+
+```
+
+
+
+
+```{r}
+bad_fit<-coffee_glance%>%
+  filter(r.squared<0.25)
+
+coffee_wa%>%
+  semi_join(bad_fit,by='country_of_origin')%>%
+  ggplot(aes(aroma,total_cup_points,color=factor(country_of_origin)))+
+  geom_line(group=1)+
+  labs(title = 'Poor Accuracy for Predictions')
+
+```
+
+
+## Build a model
+
+
+
+```{r}
+coffee_wa%>%
+  anti_join(bad_fit,by='country_of_origin')%>%
+  ggplot(aes(aroma,total_cup_points,color=factor(country_of_origin)))+
+  geom_line(group=1)+
+  labs(title = 'Good Accuracy Levels for predictions',
+       subtitle = 'Under Feature')+
+  facet_wrap(~country_of_origin)+
+  guides(color=FALSE)
+```
+
+
+### Models 
+
+For create this model is necessary understand the residuals behavior .
+
+```{r, warning=FALSE}
+coffee_wa%>%
+  select(total_cup_points,country_of_origin,any_of(numerical_features$term))%>%
+  group_by(country_of_origin)%>%
+  summarize(models=list(lm(total_cup_points~aroma+flavor+aftertaste+acidity+body+balance+uniformity+clean_cup+sweetness+cupper_points)))%>%
+  mutate(augmented=map(models,broom::augment))%>%
+  unnest(augmented)%>%
+  ggplot(aes(total_cup_points,.resid,color=country_of_origin))+
+  geom_point(alpha=1/3)+
+  geom_smooth()+
+  facet_wrap(~country_of_origin,scales = 'fixed')+
+  guides(color=FALSE)
+```
+
+```{r}
+bad_counties<-c('Vietnam','Zambia','Rwanda','Papua New Guinea','Japan','Mauritius','Cote d?lvoire')
+
+```
+
+```{r}
+data_for_model<-coffee_wa%>%
+  filter(!country_of_origin %in% bad_counties)%>%
+  group_by(country_of_origin)%>%
+  select(total_cup_points,any_of(numerical_features$term))
+
+pca_recipe <- recipe(total_cup_points~., data = data_for_model)
+pca_trans <- pca_recipe %>%
+  step_center(all_numeric()) %>%
+  step_scale(all_numeric()) %>%
+  step_pca(all_numeric())
+
+pca_estimates <- prep(pca_trans)
+sdev <- pca_estimates$steps[[3]]$res$sdev
+percent_variation <- sdev^2 / sum(sdev^2)
+var_df <- data.frame(PC=paste0("PC",1:length(sdev)),
+                     var_explained=percent_variation,
+                     stringsAsFactors = FALSE)
+```
+
+
+```{r}
+var_df %>%
+  mutate(PC = fct_inorder(PC)) %>%
+  ggplot(aes(x=PC,y=var_explained))+geom_col()
+```
+
+
+
+```{r}
+juice(pca_estimates) %>%
+  ggplot(aes(PC1, PC2)) +
+  geom_point(aes(color = country_of_origin), alpha = 0.7, size = 2)+
+  labs(title="PCA from Coffee Models")
+```
+
+
+
+```{r}
+coffee_rec <- recipe(total_cup_points ~ ., data = data_for_model) %>%
+  update_role(country_of_origin,new_role = "id")%>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors())
+
+coffee_prep <- prep(coffee_rec)
+
+coffee_prep
+```
+
+
+```{r}
+tidied_pca <- tidy(coffee_prep, 2)
+
+tidied_pca %>%
+  mutate(component = fct_inorder(component)) %>%
+  ggplot(aes(value, terms, fill = terms)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~component) +
+  labs(y = NULL)
+```
+
+
+```{r}
+tidied_pca %>%
+  filter(component %in% c("PC1", "PC2", "PC3", "PC4","PC5","PC6")) %>%
+  group_by(component) %>%
+  top_n(6, abs(value)) %>%
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component)) %>%
+  ggplot(aes(abs(value), terms, fill = value > 0)) +
+  geom_col() +
+  facet_wrap(~component, scales = "free_y") +
+  scale_y_reordered() +
+  labs(
+    x = "Absolute value of contribution",
+    y = NULL, fill = "Positive?"
+  )
+```
+
+```{r}
+juice(coffee_prep) %>%
+  filter(!country_of_origin %in% bad_counties)%>%
+  count(country_of_origin,sort = TRUE)%>%
+  filter(n>10)->filter_data
+juice(coffee_prep) %>%
+  filter(country_of_origin %in% filter_data$country_of_origin)%>%
+  lm(total_cup_points~.,data=.)%>%
+  augment()%>%
+  mutate(reiduals=total_cup_points-.resid)%>%
+  ggplot(aes(total_cup_points,reiduals,color=country_of_origin))+
+  geom_point(alpha=1/3)+
+  geom_smooth()+
+  facet_wrap(~country_of_origin,scales = 'fixed')
+
+
+```
+
+
+

@@ -1,0 +1,422 @@
+---
+title: "Gapminder Many Models"
+author: "Daniel Jiménez"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Documentation
+
+[R for Data Science](https://r4ds.had.co.nz/many-models.html)
+
+
+
+## Colocar algo acá
+
+```{r, echo=FALSE, cache=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse);
+library(modelr);
+library(broom);
+library(gapminder);
+library(skimr);
+library(gam);
+library(mgcv);
+library(tidytext);
+library(ggrepel);
+library(tidymodels);
+theme_set(theme_bw())
+```
+
+
+
+## Explore Dataset
+
+```{r}
+gapminder%>%
+  head()
+```
+
+
+
+```{r}
+gapminder%>%
+  skim()
+```
+
+
+
+life expectancy at birth per Continent
+
+```{r,message=FALSE}
+lifeExpsum<-gapminder%>%
+  group_by(continent)%>%
+  summarize(mean_lifeExp=mean(lifeExp),
+            median_lifeExp=median(lifeExp),
+            str_lifeExp=sd(lifeExp))
+
+gapminder%>%
+  inner_join(lifeExpsum)%>%
+  ggplot(aes(lifeExp))+
+  geom_histogram(aes(fill=continent))+
+  geom_vline(aes(xintercept=mean_lifeExp),linetype="dashed")+
+  facet_wrap(~continent,scales='free')+
+  guides(fill=FALSE)+
+  labs(y='',
+       x='life expectancy at birth',
+       title = 'Life Expectancy Distribution',
+       subtitle = 'With Intercept in avegarage',
+       caption = 'Many Models')
+```
+
+
+```{r}
+gapminder%>%
+  ggplot(aes(fct_reorder(continent,lifeExp),lifeExp,fill=continent))+
+  geom_boxplot()+
+  guides(fill=FALSE)+
+  labs(x='Continent',
+       y= 'life expectancy',
+       title = 'Comparative Relation Between Continent and Life Expectation')
+
+```
+
+
+
+```{r}
+gapminder%>%
+  ggplot(aes(fct_reorder(continent,pop),pop,fill=continent))+
+  geom_boxplot()+
+  guides(fill=FALSE)+
+  scale_y_log10()+
+  labs(x='Continent',
+       y= 'Poblation',
+       title = 'Comparative Relation Between (log) Poblation and Life Expectation')
+```
+
+
+
+```{r}
+gapminder%>%
+  group_by(continent)%>%
+  summarize(corr=cor(lifeExp,pop))%>%
+  mutate(continent=fct_reorder(continent,corr))%>%
+  ggplot(aes(corr,continent,color=corr>0.05))+
+  geom_errorbarh(aes(xmin=0.05,xmax=corr),height = 0,linetype = "dashed")+
+  geom_point(aes(size=corr))+
+  geom_vline(aes(xintercept=0.05),linetype='dotted')+
+  guides(size=FALSE,
+         color=FALSE)+
+  labs(x='Correlation',
+       y='Continent',
+       title='Correlation Between Life Exp and Poblation',
+       suntitle='Per Continet')
+```
+
+
+
+```{r}
+gapminder%>%
+  ggplot(aes(lifeExp,pop,color=continent))+
+  geom_point(alpha=0.1)+
+  scale_y_log10()+
+  geom_smooth()
+```
+
+
+
+```{r,message=FALSE}
+gapminder%>%
+  ggplot(aes(lifeExp,
+             gdpPercap,
+             color=continent))+
+  geom_point(alpha=0.4)+
+  geom_smooth(method='lm',color='black')+
+  facet_wrap(~continent,scales='free_y')+
+  guides(color=FALSE)
+```
+
+
+
+```{r}
+gapminder%>%
+  ggplot(aes(lifeExp,
+             gdpPercap,
+             color=continent))+
+  geom_point(alpha=0.4)+
+  geom_smooth(method='loess',color='black')+
+  facet_wrap(~continent,scales='free_y')+
+  guides(color=FALSE)
+```
+
+
+
+
+```{r}
+lm(lifeExp~.,data = gapminder)%>%
+  tidy()%>%
+  filter(p.value<=0.05)
+```
+
+
+```{r}
+gapminder%>%
+  group_by(country,continent)%>%
+  summarize(gam_model=list(gam(lifeExp~year+pop+gdpPercap)))%>%
+  mutate(glanced = map(gam_model,glance))%>%
+  unnest(glanced)
+```
+
+
+```{r}
+gapminder%>%
+  group_by(country,continent)%>%
+  summarize(lm_model=list(lm(lifeExp~year+pop+gdpPercap)))%>%
+  mutate(tidied=map(lm_model,tidy))%>%
+  unnest(tidied)%>%
+  summarize(adjusted_pvalue = p.adjust(p.value, method = "fdr"))
+```
+
+
+```{r}
+country_pvalue<-gapminder%>%
+  group_by(country,continent)%>%
+  summarize(lm_model=list(lm(lifeExp~year+pop+gdpPercap)))%>%
+  mutate(tidied=map(lm_model,tidy))%>%
+  unnest(tidied)%>%
+  group_by(country,continent)%>%
+  summarize(adjusted_pvalue = p.adjust(p.value, method = "fdr"))
+
+country_pvalue%>%
+  arrange(adjusted_pvalue)%>%
+  mutate(country=fct_reorder(country,-adjusted_pvalue))%>%
+  distinct(country,adjusted_pvalue,.keep_all = TRUE)%>%
+  filter(adjusted_pvalue<=.05)%>%
+  mutate(continet=as.factor(continent),
+         country=reorder_within(country,-adjusted_pvalue,continent))%>%
+  ggplot(aes(country,adjusted_pvalue,color=continent))+
+  geom_point()+
+  scale_x_reordered()+
+  facet_wrap(~continent,scales = 'free_y')+
+  coord_flip()
+  
+  
+
+```
+
+
+
+
+```{r}
+gapminder%>%
+  group_by(continent)%>%
+  summarize(lm_model=list(lm(lifeExp~year)))%>%
+  mutate(tidied=map(lm_model,tidy,conf.int = TRUE))%>%
+  unnest(tidied)%>%
+  filter(term!="(Intercept)") %>%
+  mutate(continent=fct_reorder(continent,estimate))%>%
+  ggplot(aes(estimate,continent)) +
+  geom_point()+
+  geom_errorbarh(aes(xmin=conf.low, xmax=conf.high,height = .3))
+```
+
+
+
+
+## Create model
+
+```{r}
+numerical_features <- gapminder %>% 
+  select(lifeExp, where(is.numeric)) %>% 
+  lm(lifeExp~., data = .) %>% 
+  tidy() %>% 
+  filter(p.value <= .05) %>% 
+  select(term)
+
+
+categorical_features <-gapminder %>% 
+  select(lifeExp, where(is.factor)) %>% 
+  lm(lifeExp~., data = .) %>% 
+  tidy() %>% 
+  filter(p.value <= .05) %>% 
+  select(term)%>%
+  separate(col=term,
+           into=c('country','country_name'),
+           sep='country')%>%
+  select(country_name)%>%
+  na.omit()
+  
+
+```
+
+
+```{r}
+gapminder%>%
+  group_by(country,continent)%>%
+  summarize(lm_model=list(lm(lifeExp~year+pop+gdpPercap)))%>%
+  mutate(glanced=map(lm_model,glance))%>%
+  unnest(glanced)%>%
+  mutate(country=fct_reorder(country,r.squared))%>%
+  ggplot(aes(continent,r.squared))+
+  geom_jitter()+
+  geom_text_repel(aes(label=country))+
+  facet_wrap(~continent,scales='free')
+```
+
+
+
+
+```{r}
+set.seed(2020)
+gm_split <- initial_split(gapminder,prop=0.7,strata = lifeExp)
+gm_train <- training(gm_split)
+gm_test <- testing(gm_split)
+
+xgboost_model <- 
+  parsnip::boost_tree(
+    mode = "regression",
+    trees = 100,
+    min_n = tune(),
+    tree_depth = tune(),
+    learn_rate = tune(),
+    loss_reduction = tune()
+  ) %>%
+    set_engine("xgboost", objective = "reg:squarederror")
+```
+
+
+
+
+```{r}
+preprocessing_recipe <- recipes::recipe(lifeExp ~ ., data = training(gm_split)) %>%
+  recipes::step_string2factor(all_nominal()) %>%
+  recipes::step_other(all_nominal(), threshold = 0.01) %>%
+  recipes::step_nzv(all_nominal()) %>%
+  prep()
+
+
+gm_cv_folds <- 
+  recipes::bake(
+    preprocessing_recipe, 
+    new_data = training(gm_split)
+  ) %>%  
+  rsample::vfold_cv(v = 20)
+```
+
+
+
+
+```{r}
+xgboost_params <- dials::parameters(
+    min_n(),
+    tree_depth(),
+    learn_rate(),
+    loss_reduction()
+  )
+
+
+xgboost_grid <- dials::grid_max_entropy(
+    xgboost_params, 
+    size = 60
+  )
+
+knitr::kable(head(xgboost_grid))
+```
+
+
+
+
+```{r}
+xgboost_wf <- 
+  workflows::workflow() %>%
+  add_model(xgboost_model) %>% 
+  add_formula(lifeExp ~ .)
+xgboost_wf
+```
+
+
+
+```{r}
+xgboost_tuned <- tune::tune_grid(
+  object = xgboost_wf,
+  resamples = gm_cv_folds,
+  grid = xgboost_grid,
+  metrics = yardstick::metric_set(rmse, rsq, mae),
+  control = tune::control_grid(verbose = TRUE)
+)
+```
+
+```{r}
+xgboost_tuned %>%
+  tune::show_best(metric = "rmse")
+xgboost_best_params <- xgboost_tuned %>%
+  tune::select_best("rmse")
+xgboost_best_params
+
+xgboost_model_final <- xgboost_model %>% 
+  finalize_model(xgboost_best_params)
+
+xgboost_model_final
+```
+
+```{r}
+train_processed <- bake(preprocessing_recipe,  new_data = training(gm_split))
+
+train_prediction <- xgboost_model_final %>%
+  fit(
+    formula = lifeExp ~ ., 
+    data    = train_processed
+  ) %>%
+  predict(new_data = train_processed) %>%
+  bind_cols(training(gm_split))
+
+
+xgboost_score_train <- 
+  train_prediction %>%
+  yardstick::metrics(lifeExp, .pred) %>%
+  mutate(.estimate = format(round(.estimate, 2), big.mark = ","))
+
+
+```
+
+
+```{r}
+test_processed  <- bake(preprocessing_recipe, new_data = testing(gm_split))
+
+test_prediction <- xgboost_model_final %>%
+  fit(
+    formula = lifeExp ~ ., 
+    data    = train_processed
+  ) %>%
+  predict(new_data = test_processed) %>%
+  bind_cols(testing(gm_split))
+
+
+xgboost_score <- test_prediction %>%
+  yardstick::metrics(lifeExp, .pred) %>%
+  mutate(.estimate = format(round(.estimate, 2), big.mark = ","))
+xgboost_score
+```
+
+
+
+
+```{r}
+life_prediction_residual <- test_prediction %>%
+  arrange(.pred) %>%
+  mutate(residual_pct = (lifeExp - .pred) / .pred) %>%
+  select(.pred, residual_pct)
+
+
+life_prediction_residual
+
+
+ggplot(life_prediction_residual, aes(x = .pred, y = residual_pct)) +
+  geom_point() +
+  xlab("Predicted Life Exp") +
+  ylab("Residual (%)") +
+  scale_y_continuous(labels = scales::percent)
+```
+

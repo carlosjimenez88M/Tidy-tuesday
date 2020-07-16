@@ -1,0 +1,118 @@
+---
+title: "Astronauts \n TidyTuesday # 29"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse);
+library(tidymodels);
+library(tidytuesdayR);
+library(skimr);
+library(ggrepel)
+theme_set(theme_classic())
+```
+
+## EDA
+
+
+```{r, message=FALSE}
+# load database
+astronauts <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-07-14/astronauts.csv')
+```
+
+
+```{r}
+skim(astronauts)
+```
+
+
+
+```{r}
+astronauts%>%
+  group_by(sex,occupation)%>%
+  summarize(total=n())%>%
+  mutate(perc=(total/sum(total))*100)%>%
+  ungroup()%>%
+  arrange(desc(total))%>%
+  ggplot(aes(fct_reorder(occupation,total),total,fill=sex))+
+  geom_col(show.legend = TRUE)+
+  coord_flip()+
+  labs(x='Ocupation',
+       y='Total',
+       title = 'Comparative Between Ocuppation and Gender')
+```
+
+
+
+```{r}
+astronauts%>%
+  mutate(decade= (year_of_mission %/% 10)*10)%>%
+  group_by(sex,decade)%>%
+  summarize(total=n())%>%
+  ungroup()%>%
+  arrange(decade)%>%
+  ggplot(aes(decade,total,color=sex))+
+  geom_point(aes(size=total))+
+  geom_text_repel(aes(label=total),color='black')+
+  geom_line()+
+  facet_wrap(~sex)+
+  guides(color=FALSE,
+         size=FALSE)+
+  labs(title = 'Participation Comparative',
+       subtitle = 'gender by mission')
+```
+
+
+```{r}
+astronauts%>%
+  mutate(decade= (year_of_mission %/% 10)*10)%>%
+  group_by(decade,sex)%>%
+  summarize(total=n())%>%
+  mutate(perc=round((total/sum(total))*100,2))%>%
+  ungroup()%>%
+  ggplot(aes(decade,perc,fill=sex))+
+  geom_bar(stat = 'identity',position = 'stack')+
+  geom_text(aes(label=paste(perc,'%')),position = position_stack(vjust = .5))
+
+```
+
+
+
+```{r}
+astronauts %>%
+ mutate(decade= (10 * year_of_mission %/% 10),
+        decade=factor(decade))%>%
+  ggplot(aes(decade,hours_mission,fill=decade))+
+  geom_boxplot(show.legend = FALSE)+
+  scale_y_log10()+
+  labs(x='',
+       y='Mission in Hours',
+       title = 'Duration relationship Mision per Decade')
+```
+
+```{r}
+astronauts_df <- astronauts %>%
+  select(
+    name, mission_title, hours_mission,
+    military_civilian, occupation, year_of_mission, in_orbit
+  ) %>%
+  mutate(
+    in_orbit = case_when(
+      str_detect(in_orbit, "^Salyut") ~ "Salyut",
+      str_detect(in_orbit, "^STS") ~ "STS",
+      TRUE ~ in_orbit
+    ),
+    occupation = str_to_lower(occupation)
+  ) %>%
+  filter(hours_mission > 0) %>%
+  mutate(hours_mission = log(hours_mission)) %>%
+  na.omit()
+```
+
+
+
+
