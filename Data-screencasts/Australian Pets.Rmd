@@ -1,0 +1,113 @@
+---
+title: "Australian Pets"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+```{r, echo=FALSE, cache=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse);
+library(tidymodels);
+library(tidymetrics);
+library(tidytext);
+library(lubridate);
+theme_set(theme_bw())
+```
+
+```{r, message=FALSE, warning=FALSE}
+animal_outcomes <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-07-21/animal_outcomes.csv')
+animal_complaints <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-07-21/animal_complaints.csv')
+brisbane_complaints <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-07-21/brisbane_complaints.csv')
+```
+
+
+```{r}
+animal_by_zone<-animal_outcomes%>%
+  gather(key='key',value='value',-animal_type,-outcome,-year)%>%
+  filter(key!='Total')%>%
+  filter(value>0)%>%
+  rename(zone=key)%>%
+  mutate(zone=factor(zone))%>%
+  mutate(animal_type=tolower(animal_type))
+
+animal_summarized<-animal_by_zone%>%
+  mutate(decade=10 * year %/% 10)%>%
+  group_by(decade,animal_type,outcome,zone)%>%
+  summarize(total=sum(value))
+animal_summarized%>%
+  filter(total>5)%>%
+  ungroup()%>%
+  mutate(decade=factor(decade),
+         animal_type=reorder_within(animal_type,total,decade))%>%
+  ggplot(aes(total,animal_type,fill=decade))+
+  geom_col(show.legend = FALSE)+
+  scale_y_reordered()+
+  facet_wrap(~decade,scales = 'free_y')+
+  scale_x_continuous(labels = scales::comma)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(title = 'Pet`s Evolution in Australia',
+       y='',
+       caption = '#Undatascientistdice')
+
+```
+
+
+
+
+
+```{r}
+animal_com_sum<-animal_complaints%>%
+  mutate(`Complaint Type`=as.factor(`Complaint Type`))%>%
+  mutate(`Date Received`=paste(`Date Received`,1))%>%
+  rename(date=(`Date Received`))%>%
+  mutate(date=myd(date))%>%
+  mutate(year=year(date))%>%
+  mutate(decade=10* year %/% 10)%>%
+  group_by(`Animal Type`,`Complaint Type`,Suburb,decade)%>%
+  count(sort = TRUE)%>%
+  rename(animal_type=`Animal Type`,
+         total1=n,
+         suburb=Suburb)%>%
+  mutate(suburb=tolower(suburb))
+
+animal_com_sum
+
+```
+
+```{r}
+
+brisbane_summarized<-brisbane_complaints%>%
+  mutate(suburb=tolower(suburb),
+         animal_type=tolower(animal_type))%>%
+  mutate(years=gsub(".*?\\b(201[1-9])\\b.*", "\\1", date_range))%>%
+  mutate(years=as.numeric(years))%>%
+  mutate(decade = 10 * years %/% 10)%>%
+  group_by(decade,animal_type,category,suburb)%>%
+  summarize(total2=n(),
+            total2=sum(total2))%>%
+  na.omit()%>%
+  ungroup()
+
+brisbane_summarized
+```
+
+```{r}
+brisbane_summarized%>%
+  mutate(animal_type=factor(animal_type),
+         category=reorder_within(category,total2,animal_type))%>%
+  ggplot(aes(total2,category,color=animal_type,fill=animal_type))+
+  geom_boxplot()+
+  scale_y_reordered()+
+  facet_wrap(~animal_type,scales='free_y')+
+  guides(fill=FALSE,color=FALSE)
+```
+
+
+
+
