@@ -1,0 +1,369 @@
+---
+title: "Tidytuesday # 31"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,warning=FALSE, message=FALSE,cache=FALSE,echo=FALSE}
+library(tidyverse);
+library(tidymodels);
+library(tidytuesdayR);
+library(ggthemes);
+library(skimr);
+library(lubridate)
+theme_set(theme_economist())
+caption='#Undatascientistdice'
+```
+
+
+
+## Load Dataset
+
+```{r, echo=FALSE, cache=FALSE, warning=FALSE, message=FALSE}
+tuesdata <- tidytuesdayR::tt_load('2020-07-28')
+tuesdata <- tidytuesdayR::tt_load(2020, week = 31)
+
+penguins<-tuesdata$penguins
+penguins_raw<-tuesdata$penguins_raw
+```
+
+
+## Explore Dataset
+
+
+```{r}
+penguins
+```
+
+
+```{r}
+penguins%>%
+  skim()
+```
+
+
+
+
+```{r, echo=FALSE, cache=FALSE}
+library(tidytext)
+penguins%>%
+  filter(!is.na(sex))%>%
+  group_by(sex,island,year)%>%
+  count()%>%
+  ungroup()%>%
+  mutate(year=factor(year),
+         island=reorder_within(island,n,year))%>%
+  ggplot(aes(n,island,fill=sex))+
+  geom_col()+
+  scale_y_reordered()+
+  labs(title = 'Sex Comparative per Year by Region',
+       caption = caption)+
+  facet_wrap(~year,scales = 'free')+
+  theme(legend.position="bottom")
+```
+
+
+
+```{r,warning=FALSE}
+penguins_pivot<-penguins%>%
+  pivot_longer(cols = bill_length_mm:body_mass_g,
+               names_to='metric',
+               values_to='value')
+
+penguins_pivot%>%
+  ggplot(aes(value,fill=species))+
+  geom_histogram(bins=20)+
+  facet_wrap(~metric, scales='free_x')
+```
+
+
+
+```{r}
+penguins_pivot%>%
+  ggplot(aes(species,value,fill=species,color=species))+
+  geom_boxplot(bins=20)+
+  facet_wrap(~metric, scales='free_y')
+```
+
+
+
+```{r}
+penguins%>%
+  ggplot(aes(island,fill=species))+
+  geom_bar()
+```
+
+
+## Machine Learning Models
+
+```{r}
+set.seed(1234)
+split<-penguins%>%
+  mutate(species=factor(species))%>%
+  na.omit()%>%
+  initial_split()
+
+training(split)->training_data
+splits<-training_data%>%
+  vfold_cv(v = 17)
+
+models<-rand_forest(mode = 'classification')%>%
+  set_engine('ranger')%>%
+  fit_resamples(species~ ., 
+                resamples =splits,
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+```
+
+
+
+```{r}
+knn_model<-nearest_neighbor('classification',
+                 neighbors = 10,
+                 )%>%
+  set_engine('kknn')%>%
+  fit_resamples(species~ ., 
+                resamples =splits,
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+
+svm_model<-parsnip::svm_rbf(mode = 'classification')%>%
+  set_engine('kernlab')%>%
+   fit_resamples(species~ ., 
+                resamples =splits,
+                metrics = metric_set(accuracy,kap,roc_auc))
+tree_model<-parsnip::decision_tree('classification',tree_depth = 10)%>%
+  set_engine('rpart')%>%
+  fit_resamples(species~ bill_length_mm, 
+                resamples =splits,
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+bind_rows(
+  collect_metrics(knn_model)%>%
+    mutate(model='knn'),
+  collect_metrics(models)%>%
+    mutate(model='Random Forest'),
+  collect_metrics(svm_model)%>%
+    mutate(model='Support Vector Machine'),
+  collect_metrics(tree_model)%>%
+    mutate(model='Decision Tree')
+)%>%
+  ggplot(aes(mean,.metric, color=model))+
+  geom_point()+
+  geom_errorbar(aes(xmin= mean -2 * std_err,
+                    xmax= mean +2 * std_err))+
+  labs(title = 'Cross Validation accuracy metrics',
+       caption = caption)+
+  theme(legend.position="bottom")
+```
+
+## Prueba de los modelos en predicciones
+
+### Support Vector Machine Multiclass
+```{r}
+
+## Overfiting 
+svm_model_train<-parsnip::svm_rbf(mode = 'classification')%>%
+  set_engine('kernlab')%>%
+   fit(species~ ., 
+                data=training(split),
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+pred<-testing(split)%>%
+  predict(svm_model_train,new_data = .)%>%
+  bind_cols(testing(split))
+metrics(pred,species,estimate = .pred_class)
+```
+
+```{r}
+bind_cols(obs=testing(split)$species,
+          predict(svm_model_train,new_data = testing(split)))%>%
+  conf_mat(obs, .pred_class)
+```
+
+
+### KNN
+```{r}
+## Overfiting 
+knn_model_train<-nearest_neighbor('classification',
+                 neighbors = 3,
+                 )%>%
+  set_engine('kknn')%>%
+  fit(species~ ., 
+                data =training(split),
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+pred<-testing(split)%>%
+  predict(knn_model_train,new_data = .)%>%
+  bind_cols(testing(split))
+metrics(pred,species,estimate = .pred_class)
+```
+
+```{r}
+bind_cols(obs=testing(split)$species,
+          predict(knn_model_train,new_data = testing(split)))%>%
+  conf_mat(obs, .pred_class)
+```
+
+
+
+### Random Forest
+```{r}
+
+rf_model<-rand_forest(mode = 'classification',trees = 4)%>%
+  set_engine('ranger')%>%
+  fit(species~ ., 
+                data =training(split),
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+pred<-testing(split)%>%
+  predict(rf_model,new_data = .)%>%
+  bind_cols(testing(split))
+
+metrics(pred,species,estimate = .pred_class)
+
+
+```
+
+
+
+```{r}
+bind_cols(obs=testing(split)$species,
+          predict(rf_model,new_data = testing(split)))%>%
+  conf_mat(obs, .pred_class)
+
+```
+
+### Decision tree
+
+```{r}
+tree_model_train<-parsnip::decision_tree('classification',tree_depth = 10)%>%
+  set_engine('rpart')%>%
+  fit(species~ ., 
+                data =training(split),
+                metrics = metric_set(accuracy,kap,roc_auc))
+
+pred<-testing(split)%>%
+  predict(tree_model_train,new_data = .)%>%
+  bind_cols(testing(split))
+metrics(pred,species,estimate = .pred_class)
+
+bind_cols(obs=testing(split)$species,
+          predict(tree_model_train,new_data = testing(split)))%>%
+  conf_mat(obs, .pred_class)
+
+```
+
+## Random Forest Model for production
+
+
+```{r}
+rf_spec <- rand_forest(
+  mtry = tune(),
+  trees = 10,
+  min_n = tune()
+) %>%
+  set_mode("classification") %>%
+  set_engine("ranger")
+
+rf_rec <- recipe(species ~ ., data = training(split))%>%
+  update_role(bill_depth_mm, new_role = "ID") %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_downsample(species)
+rf_folds <- vfold_cv(training(split))
+rf_wf<-workflow() %>%
+  add_recipe(rf_rec) %>%
+  add_model(rf_spec)
+
+
+doParallel::registerDoParallel()
+
+set.seed(345)
+tune_res <- tune_grid(
+  rf_wf,
+  resamples = rf_folds,
+  grid = 20
+)
+```
+
+
+
+
+```{r, echo=FALSE, cache=FALSE}
+tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  select(mean, min_n, mtry) %>%
+  pivot_longer(min_n:mtry,
+    values_to = "value",
+    names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "AUC",
+       title = 'Parametres Selection for Random Forest Model',
+       caption = caption)
+```
+
+```{r}
+set.seed(123456)
+rf_grid <- grid_regular(
+  mtry(range = c(1,6)),
+  min_n(range = c(2, 10)),
+  levels = 5
+)
+
+
+regular_res<-tune_grid(
+  rf_wf,
+  resamples = rf_folds,
+  grid = rf_grid
+)
+
+
+regular_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  labs(y = "AUC")
+```
+
+
+
+```{r,echo=FALSE,cache=FALSE}
+best_auc <- select_best(regular_res, "roc_auc")
+final_rf <- finalize_model(
+  rf_spec,
+  best_auc
+)
+
+library(vip)
+rf_prep <- prep(rf_rec)
+final_rf %>%
+  set_engine("ranger", importance = "permutation") %>%
+  fit(species ~ .,
+    data = juice(rf_prep) 
+  ) %>%
+  vip(geom = "point")
+```
+
+
+
+```{r}
+final_wf <- workflow() %>%
+  add_recipe(rf_rec) %>%
+  add_model(final_rf)
+
+final_wf
+```
+
+
+
