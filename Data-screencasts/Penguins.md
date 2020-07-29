@@ -94,10 +94,6 @@ penguins_pivot%>%
   facet_wrap(~metric, scales='free_y')
 ```
 
-    ## Warning: Ignoring unknown parameters: bins
-
-    ## Warning: Removed 8 rows containing non-finite values (stat_boxplot).
-
 ![](Penguins_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 ``` r
@@ -111,202 +107,142 @@ penguins%>%
 ## Machine Learning Models
 
 ``` r
-set.seed(1234)
-split<-penguins%>%
-  mutate(species=factor(species))%>%
-  na.omit()%>%
-  initial_split()
-
-training(split)->training_data
-splits<-training_data%>%
-  vfold_cv(v = 17)
-
-models<-rand_forest(mode = 'classification')%>%
-  set_engine('ranger')%>%
-  fit_resamples(species~ ., 
-                resamples =splits,
-                metrics = metric_set(accuracy,kap,roc_auc))
+set.seed(123)
+penguins<-penguins%>%
+  mutate_if(is.character, factor)
+split<-initial_split(na.omit(penguins),strata = species)
+train_set<-training(split)
+test_set<-testing(split)
 ```
 
-    ## x Fold03: model (predictions): Error: Can't subset columns that don't exist.
-    ## x Col...
+``` r
+penguins_rec<-recipe(species ~ . , data = train_set)%>%
+  step_downsample(species) %>%
+  step_zv(all_numeric())%>%
+  prep()
+```
 
-    ## x Fold12: model (predictions): Error: Can't subset columns that don't exist.
-    ## x Col...
+    ## Warning: `step_downsample()` is deprecated as of recipes 0.1.13.
+    ## Please use `themis::step_downsample()` instead.
+    ## This warning is displayed once every 8 hours.
+    ## Call `lifecycle::last_warnings()` to see where this warning was generated.
 
 ``` r
+penguins_rec%>%
+  juice()
+```
+
+    ## # A tibble: 153 x 8
+    ##    island bill_length_mm bill_depth_mm flipper_length_… body_mass_g sex    year
+    ##    <fct>           <dbl>         <dbl>            <dbl>       <dbl> <fct> <dbl>
+    ##  1 Torge…           34.6          17.2              189        3200 fema…  2008
+    ##  2 Torge…           41.1          17.6              182        3200 fema…  2007
+    ##  3 Dream            37.3          17.8              191        3350 fema…  2008
+    ##  4 Torge…           36.6          17.8              185        3700 fema…  2007
+    ##  5 Dream            39.6          18.1              186        4450 male   2008
+    ##  6 Torge…           36.2          16.1              187        3550 fema…  2008
+    ##  7 Biscoe           39            17.5              186        3550 fema…  2008
+    ##  8 Dream            44.1          19.7              196        4400 male   2007
+    ##  9 Torge…           38.6          17                188        2900 fema…  2009
+    ## 10 Biscoe           40.6          18.8              193        3800 male   2008
+    ## # … with 143 more rows, and 1 more variable: species <fct>
+
+``` r
+penguins_folds <- vfold_cv(train_set)
+rf_model<-rand_forest(mode = 'classification')%>%
+  set_engine('ranger')%>%
+  fit_resamples(species~bill_length_mm + island + bill_depth_mm + flipper_length_mm + body_mass_g, 
+                resamples =penguins_folds,
+                control = control_resamples(save_pred = TRUE),
+                metrics = metric_set(accuracy,kap,roc_auc))
+
 knn_model<-nearest_neighbor('classification',
                  neighbors = 10,
                  )%>%
   set_engine('kknn')%>%
-  fit_resamples(species~ ., 
-                resamples =splits,
+  fit_resamples(species~bill_length_mm + island + bill_depth_mm + flipper_length_mm + body_mass_g, 
+                resamples =penguins_folds,
+                control = control_resamples(save_pred = TRUE),
                 metrics = metric_set(accuracy,kap,roc_auc))
-```
 
-    ## x Fold03: model (predictions): Error: Can't subset columns that don't exist.
-    ## x Col...
 
-    ## x Fold12: model (predictions): Error: Can't subset columns that don't exist.
-    ## x Col...
-
-``` r
 svm_model<-parsnip::svm_rbf(mode = 'classification')%>%
   set_engine('kernlab')%>%
-   fit_resamples(species~ ., 
-                resamples =splits,
+   fit_resamples(species~bill_length_mm + island + bill_depth_mm + flipper_length_mm + body_mass_g, 
+                resamples =penguins_folds,
+                control = control_resamples(save_pred = TRUE),
+                metrics = metric_set(accuracy,kap,roc_auc))
+tree_model<-parsnip::decision_tree('classification',tree_depth = 10)%>%
+  set_engine('rpart')%>%
+  fit_resamples(species~bill_length_mm + island + bill_depth_mm + flipper_length_mm + body_mass_g, 
+                resamples =penguins_folds,
+                control = control_resamples(save_pred = TRUE),
                 metrics = metric_set(accuracy,kap,roc_auc))
 ```
 
-    ## x Fold03: model (predictions): Error: Can't subset columns that don't exist.
-    ## x Col...
-    ## x Fold12: model (predictions): Error: Can't subset columns that don't exist.
-    ## x Col...
+## Evaluate Models
 
 ``` r
-tree_model<-parsnip::decision_tree('classification',tree_depth = 10)%>%
-  set_engine('rpart')%>%
-  fit_resamples(species~ bill_length_mm, 
-                resamples =splits,
-                metrics = metric_set(accuracy,kap,roc_auc))
-
 bind_rows(
   collect_metrics(knn_model)%>%
     mutate(model='knn'),
-  collect_metrics(models)%>%
+  collect_metrics(tree_model)%>%
+    mutate(model='Decision Tree'),
+  collect_metrics(rf_model)%>%
     mutate(model='Random Forest'),
   collect_metrics(svm_model)%>%
-    mutate(model='Support Vector Machine'),
-  collect_metrics(tree_model)%>%
-    mutate(model='Decision Tree')
+    mutate(model='Support Vector Machine')
 )%>%
   ggplot(aes(mean,.metric, color=model))+
   geom_point()+
   geom_errorbar(aes(xmin= mean -2 * std_err,
                     xmax= mean +2 * std_err))+
+  facet_wrap(~model)+
+  guides(color=FALSE)+
   labs(title = 'Cross Validation accuracy metrics',
        caption = caption)+
-  theme(legend.position="bottom")
+  theme(legend.position="bottom")+
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
-![](Penguins_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
-
-## Prueba de los modelos en predicciones
-
-### Support Vector Machine Multiclass
+![](Penguins_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 ``` r
-## Overfiting 
-svm_model_train<-parsnip::svm_rbf(mode = 'classification')%>%
-  set_engine('kernlab')%>%
-   fit(species~ ., 
-                data=training(split),
-                metrics = metric_set(accuracy,kap,roc_auc))
-
-pred<-testing(split)%>%
-  predict(svm_model_train,new_data = .)%>%
-  bind_cols(testing(split))
-metrics(pred,species,estimate = .pred_class)
+knn_model %>%
+  unnest(.predictions) %>%
+  mutate(model = "kknn")%>%
+  bind_rows(rf_model %>%
+  unnest(.predictions) %>%
+  mutate(model = "Random Forest"),
+  tree_model %>%
+  unnest(.predictions) %>%
+  mutate(model = "Decision Tree"),
+  svm_model %>%
+  unnest(.predictions) %>%
+  mutate(model = "SVM"))%>%
+  group_by(model) %>%
+  roc_curve(species, .pred_Chinstrap,.pred_Adelie,.pred_Gentoo) %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
+  geom_line(size = 1.5) +
+  geom_abline(
+    lty = 2, alpha = 0.5,
+    color = "gray50",
+    size = 1.2
+  )+
+  facet_wrap(~model)+
+  guides(color=FALSE)
 ```
 
-    ## # A tibble: 2 x 3
-    ##   .metric  .estimator .estimate
-    ##   <chr>    <chr>          <dbl>
-    ## 1 accuracy multiclass         1
-    ## 2 kap      multiclass         1
-
-``` r
-bind_cols(obs=testing(split)$species,
-          predict(svm_model_train,new_data = testing(split)))%>%
-  conf_mat(obs, .pred_class)
-```
-
-    ##            Truth
-    ## Prediction  Adelie Chinstrap Gentoo
-    ##   Adelie        41         0      0
-    ##   Chinstrap      0        15      0
-    ##   Gentoo         0         0     27
-
-### KNN
-
-``` r
-## Overfiting 
-knn_model_train<-nearest_neighbor('classification',
-                 neighbors = 3,
-                 )%>%
-  set_engine('kknn')%>%
-  fit(species~ ., 
-                data =training(split),
-                metrics = metric_set(accuracy,kap,roc_auc))
-
-pred<-testing(split)%>%
-  predict(knn_model_train,new_data = .)%>%
-  bind_cols(testing(split))
-metrics(pred,species,estimate = .pred_class)
-```
-
-    ## # A tibble: 2 x 3
-    ##   .metric  .estimator .estimate
-    ##   <chr>    <chr>          <dbl>
-    ## 1 accuracy multiclass         1
-    ## 2 kap      multiclass         1
-
-``` r
-bind_cols(obs=testing(split)$species,
-          predict(knn_model_train,new_data = testing(split)))%>%
-  conf_mat(obs, .pred_class)
-```
-
-    ##            Truth
-    ## Prediction  Adelie Chinstrap Gentoo
-    ##   Adelie        41         0      0
-    ##   Chinstrap      0        15      0
-    ##   Gentoo         0         0     27
-
-### Random Forest
-
-``` r
-rf_model<-rand_forest(mode = 'classification',trees = 4)%>%
-  set_engine('ranger')%>%
-  fit(species~ ., 
-                data =training(split),
-                metrics = metric_set(accuracy,kap,roc_auc))
-
-pred<-testing(split)%>%
-  predict(rf_model,new_data = .)%>%
-  bind_cols(testing(split))
-
-metrics(pred,species,estimate = .pred_class)
-```
-
-    ## # A tibble: 2 x 3
-    ##   .metric  .estimator .estimate
-    ##   <chr>    <chr>          <dbl>
-    ## 1 accuracy multiclass         1
-    ## 2 kap      multiclass         1
-
-``` r
-bind_cols(obs=testing(split)$species,
-          predict(rf_model,new_data = testing(split)))%>%
-  conf_mat(obs, .pred_class)
-```
-
-    ##            Truth
-    ## Prediction  Adelie Chinstrap Gentoo
-    ##   Adelie        41         0      0
-    ##   Chinstrap      0        15      0
-    ##   Gentoo         0         0     27
-
-### Decision tree
+![](Penguins_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 ``` r
 tree_model_train<-parsnip::decision_tree('classification',tree_depth = 10)%>%
   set_engine('rpart')%>%
   fit(species~ ., 
-                data =training(split),
+                data =train_set,
                 metrics = metric_set(accuracy,kap,roc_auc))
 
-pred<-testing(split)%>%
+pred<-test_set%>%
   predict(tree_model_train,new_data = .)%>%
   bind_cols(testing(split))
 metrics(pred,species,estimate = .pred_class)
@@ -315,8 +251,8 @@ metrics(pred,species,estimate = .pred_class)
     ## # A tibble: 2 x 3
     ##   .metric  .estimator .estimate
     ##   <chr>    <chr>          <dbl>
-    ## 1 accuracy multiclass     0.976
-    ## 2 kap      multiclass     0.961
+    ## 1 accuracy multiclass     0.890
+    ## 2 kap      multiclass     0.827
 
 ``` r
 bind_cols(obs=testing(split)$species,
@@ -326,114 +262,123 @@ bind_cols(obs=testing(split)$species,
 
     ##            Truth
     ## Prediction  Adelie Chinstrap Gentoo
-    ##   Adelie        40         1      0
-    ##   Chinstrap      1        14      0
-    ##   Gentoo         0         0     27
+    ##   Adelie        33         3      0
+    ##   Chinstrap      2        12      1
+    ##   Gentoo         1         2     28
 
-## Random Forest Model for production
+### Final Model
 
 ``` r
-rf_spec <- rand_forest(
-  mtry = tune(),
-  trees = 10,
-  min_n = tune()
-) %>%
-  set_mode("classification") %>%
-  set_engine("ranger")
+set.seed(456)
+penguins_folds <- vfold_cv(train_set)
 
-rf_rec <- recipe(species ~ ., data = training(split))%>%
-  update_role(bill_depth_mm, new_role = "ID") %>%
-  step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_downsample(species)
+decision_tree(mode = 'classification',min_n = tune(),cost_complexity = 1)%>%
+  set_engine('rpart')
 ```
 
-    ## Warning: `step_downsample()` is deprecated as of recipes 0.1.13.
-    ## Please use `themis::step_downsample()` instead.
-    ## This warning is displayed once every 8 hours.
-    ## Call `lifecycle::last_warnings()` to see where this warning was generated.
+    ## Decision Tree Model Specification (classification)
+    ## 
+    ## Main Arguments:
+    ##   cost_complexity = 1
+    ##   min_n = tune()
+    ## 
+    ## Computational engine: rpart
 
 ``` r
-rf_folds <- vfold_cv(training(split))
-rf_wf<-workflow() %>%
-  add_recipe(rf_rec) %>%
-  add_model(rf_spec)
+tree_models<-decision_tree(mode = 'classification',
+                         min_n = tune(),
+                         cost_complexity = 0.1)%>%
+  set_engine('rpart')
 
+penguins_wf<-workflow()%>%
+  add_recipe(penguins_rec)%>%
+  add_model(tree_models)
+```
 
+``` r
 doParallel::registerDoParallel()
 
 set.seed(345)
 tune_res <- tune_grid(
-  rf_wf,
-  resamples = rf_folds,
+  penguins_wf,
+  resamples = penguins_folds,
   grid = 20
 )
+
+tune_res
 ```
 
-    ## i Creating pre-processing data to finalize unknown parameter: mtry
-
-![](Penguins_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
+    ## # Tuning results
+    ## # 10-fold cross-validation 
+    ## # A tibble: 10 x 4
+    ##    splits           id     .metrics          .notes          
+    ##    <list>           <chr>  <list>            <list>          
+    ##  1 <split [225/26]> Fold01 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  2 <split [226/25]> Fold02 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  3 <split [226/25]> Fold03 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  4 <split [226/25]> Fold04 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  5 <split [226/25]> Fold05 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  6 <split [226/25]> Fold06 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  7 <split [226/25]> Fold07 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  8 <split [226/25]> Fold08 <tibble [38 × 5]> <tibble [0 × 1]>
+    ##  9 <split [226/25]> Fold09 <tibble [38 × 5]> <tibble [0 × 1]>
+    ## 10 <split [226/25]> Fold10 <tibble [38 × 5]> <tibble [0 × 1]>
 
 ``` r
-set.seed(123456)
 rf_grid <- grid_regular(
-  mtry(range = c(1,6)),
-  min_n(range = c(2, 10)),
+  min_n(range = c(2, 8)),
   levels = 5
 )
-
-
-regular_res<-tune_grid(
-  rf_wf,
-  resamples = rf_folds,
+set.seed(456)
+regular_res <- tune_grid(
+  penguins_wf,
+  resamples = penguins_folds,
   grid = rf_grid
 )
-
-
-regular_res %>%
-  collect_metrics() %>%
-  filter(.metric == "roc_auc") %>%
-  mutate(min_n = factor(min_n)) %>%
-  ggplot(aes(mtry, mean, color = min_n)) +
-  geom_line(alpha = 0.5, size = 1.5) +
-  geom_point() +
-  labs(y = "AUC")
 ```
 
-![](Penguins_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
+``` r
+regular_res
+```
 
-    ## 
-    ## Attaching package: 'vip'
+    ## # Tuning results
+    ## # 10-fold cross-validation 
+    ## # A tibble: 10 x 4
+    ##    splits           id     .metrics          .notes          
+    ##    <list>           <chr>  <list>            <list>          
+    ##  1 <split [225/26]> Fold01 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  2 <split [226/25]> Fold02 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  3 <split [226/25]> Fold03 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  4 <split [226/25]> Fold04 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  5 <split [226/25]> Fold05 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  6 <split [226/25]> Fold06 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  7 <split [226/25]> Fold07 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  8 <split [226/25]> Fold08 <tibble [10 × 5]> <tibble [0 × 1]>
+    ##  9 <split [226/25]> Fold09 <tibble [10 × 5]> <tibble [0 × 1]>
+    ## 10 <split [226/25]> Fold10 <tibble [10 × 5]> <tibble [0 × 1]>
 
-    ## The following object is masked from 'package:utils':
-    ## 
-    ##     vi
-
-![](Penguins_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
+``` r
+best_auc <- select_best(regular_res, "roc_auc")
+final_rf <- finalize_model(
+  tree_models,
+  best_auc
+)
+```
 
 ``` r
 final_wf <- workflow() %>%
-  add_recipe(rf_rec) %>%
+  add_recipe(penguins_rec) %>%
   add_model(final_rf)
 
-final_wf
+final_res <- final_wf %>%
+  last_fit(split)
+
+final_res %>%
+  collect_metrics()
 ```
 
-    ## ══ Workflow ══════════════════
-    ## Preprocessor: Recipe
-    ## Model: rand_forest()
-    ## 
-    ## ── Preprocessor ──────────────
-    ## 2 Recipe Steps
-    ## 
-    ## ● step_dummy()
-    ## ● step_downsample()
-    ## 
-    ## ── Model ─────────────────────
-    ## Random Forest Model Specification (classification)
-    ## 
-    ## Main Arguments:
-    ##   mtry = 3
-    ##   trees = 10
-    ##   min_n = 8
-    ## 
-    ## Computational engine: ranger
+    ## # A tibble: 2 x 3
+    ##   .metric  .estimator .estimate
+    ##   <chr>    <chr>          <dbl>
+    ## 1 accuracy multiclass     0.890
+    ## 2 roc_auc  hand_till      0.895
