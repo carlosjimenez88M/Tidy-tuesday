@@ -1,0 +1,73 @@
+---
+title: "TidyTuesday #35"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## libraries 
+
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ggthemes)
+library(tidytuesdayR)
+library(skimr)
+theme_set(theme_classic())
+library(scales)
+library(lubridate)
+cap='#Undatascientistdice'
+```
+
+
+
+
+## Load Dataset
+
+
+```{r,message=FALSE}
+tuesdata <- tidytuesdayR::tt_load(2020, week = 35)
+chopped<-tuesdata$chopped
+```
+
+
+
+## EDA
+
+In this part I Explore the data set, I love begin with `skim`[^1] function for denoted  a broad overview of a frame.
+
+```{r}
+chopped%>%
+  skim()
+```
+
+Is very interesting the part of `episode_rating`
+
+
+```{r,fig.height=10,fig.width=10}
+chopped%>%
+  mutate(season=factor(season))%>%
+  filter(!is.na(episode_rating))%>%
+  ggplot(aes(series_episode,episode_rating,fill=season))+
+  geom_col(show.legend = FALSE)+
+  facet_wrap(~season,scales = 'free')+
+  labs(title = 'Rating Distribution per season',
+       y='Rating',
+       x='Episode',
+       caption = cap)+
+  theme(plot.title = element_text(hjust = .5))
+```
+
+
+```{r}
+chopped<-chopped%>%
+  mutate(air_date=mdy(air_date))
+```
+
+
+
+[^1]:https://www.rdocumentation.org/packages/skimr/versions/1.0.2/topics/skim
+
