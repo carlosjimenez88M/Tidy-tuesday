@@ -7,10 +7,11 @@ In this space I working the tidytuesday, where I develop differents data science
 
 
 
-|challenge|solution|
+|Challenge|Solution|
 |:--------|:-------|
 |[Xmen](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-06-30/readme.md)| [Bootstrap and EDA](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Xmen.md)|
 [Many Models and XGboost](https://cran.r-project.org/web/packages/gapminder/README.html)|[Tidymodel and XGB](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/manymodels.md)|
 [Coffee Rating](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-07-07/readme.md)|[PCA and Feature Engineering](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/coffe-Rating-.md)|
 |[Australian Pets](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-07-21/readme.md)|[EDA and Classification models](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Australian-Pets.md)|
 |[penguins](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-07-28/readme.md)|[Machine Learning Classification](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Penguins.md)|
+|[Choppen](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-08-25/readme.md)|[Rating Model](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/choppen.md)|
