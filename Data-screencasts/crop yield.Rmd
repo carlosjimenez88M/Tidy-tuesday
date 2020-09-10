@@ -108,7 +108,7 @@ mean(q$avg_yield_potatoes)
 
 ```{r}
 pivot_crop%>%
-  filter(crop=='potatoes')%>%
+  filter(crop=='bananas')%>%
   group_by(entity)%>%
   summarize(avg_yield_potatoes=mean(yield))%>%
   arrange(desc(avg_yield_potatoes))%>%
