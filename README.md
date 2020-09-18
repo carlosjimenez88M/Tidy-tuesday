@@ -15,3 +15,4 @@ In this space I working the tidytuesday, where I develop differents data science
 |[Australian Pets](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-07-21/readme.md)|[EDA and Classification models](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Australian-Pets.md)|
 |[penguins](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-07-28/readme.md)|[Machine Learning Classification](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Penguins.md)|
 |[Choppen](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-08-25/readme.md)|[Rating Model](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/choppen.md)|
+|[US Spending on Kids](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-09-15/readme.md)|[Many Models and Shiny Documents](https://danieljimenez.shinyapps.io/tidytyesday38/)|
