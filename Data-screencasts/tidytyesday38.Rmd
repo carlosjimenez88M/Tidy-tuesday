@@ -1,0 +1,75 @@
+---
+title: "Tidytuesday # 38"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE)
+```
+
+
+# US Spending on Kids
+
+Este es un `tidytuesday` especial para mi, ya que será la primera vez que trabaje con **shiny documents**, por lo tanto deberé ser concreto con lo que quiero mostrar acá. El set de datos es `kids` el cual lo encontrará en el siguiente [link](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-09-15/readme.md)
+
+
+```{r}
+library(shiny)
+library(stringr)
+library(forcats)
+library(tidyverse)
+library(tidymodels)
+library(widyr)
+library(tidytext)
+library(skimr)
+library(ggrepel)
+library(plotly)
+library(rsconnect)
+theme_set(theme_classic())
+kids <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-15/kids.csv')
+```
+
+## Análisis Exploratorio de Datos 
+
+El set de datos consiste en el gasto del Gobierno en todo lo que tiene que ver con inversión pública en los niños.
+
+Una forma resumida de ver los datos viene dada `skim` que provee una visualización de los detalles estadísticos del set de datos.
+
+```{r}
+kids%>%
+  skim()
+```
+
+En esta fase quiero verificar como es el comportamiento de la variable `state`, para ello desarrollaré un filtro por los primeros 5 temas de variable, los cuales indican cada tipo de gasto.
+
+
+```{r}
+variables<-kids%>%
+  distinct(variable)%>%
+  head(5)
+
+states<-kids%>%
+  filter(variable %in% variables$variable)%>%
+  filter(year==2016)%>%
+  group_by(year,state)%>%
+  summarize(total_infl_adj=sum(inf_adj))%>%
+  head(5)%>%
+  pull(state)
+
+pk12<-kids%>%
+  filter(variable %in% variables$variable)%>%
+  filter(state %in% states)%>%
+  group_by(year,state,variable)%>%
+  summarize(total_infl_adj=sum(inf_adj))%>%
+  top_n(5,state)%>%
+  ggplot(aes(year,total_infl_adj,color=state,label=state))+
+  geom_line(show.legend = FALSE)+
+  facet_wrap(~variable,scales = 'free')
+
+
+ggplotly(pk12)
+```
+
+
+
