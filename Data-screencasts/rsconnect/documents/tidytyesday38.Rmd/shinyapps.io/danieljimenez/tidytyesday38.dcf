@@ -1,0 +1,12 @@
+name: tidytyesday38
+title: tidytyesday38
+username:
+account: danieljimenez
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2838412
+bundleId: 3645265
+url: https://danieljimenez.shinyapps.io/tidytyesday38/
+when: 1600466563.74003
+asMultiple: FALSE
+asStatic: FALSE

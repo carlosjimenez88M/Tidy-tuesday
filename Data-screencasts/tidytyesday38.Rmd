@@ -26,6 +26,7 @@ library(skimr)
 library(ggrepel)
 library(plotly)
 library(rsconnect)
+library(scales)
 theme_set(theme_classic())
 kids <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-09-15/kids.csv')
 ```
@@ -63,13 +64,164 @@ pk12<-kids%>%
   group_by(year,state,variable)%>%
   summarize(total_infl_adj=sum(inf_adj))%>%
   top_n(5,state)%>%
-  ggplot(aes(year,total_infl_adj,color=state,label=state))+
+  ggplot(aes(year,1000*total_infl_adj,color=state,label=state))+
   geom_line(show.legend = FALSE)+
-  facet_wrap(~variable,scales = 'free')
+  facet_wrap(~variable,scales = 'free')+
+  expand_limits(y=0)+
+  scale_y_continuous(labels = dollar)+
+  labs(x='',
+       y='')
+  
 
 
 ggplotly(pk12)
+
+```
+Lo evidente hasta el momento es que hay un gasto foco, y es el **pk12ed**, y que hasta el 2015 California lideraba esta inversión.
+
+
+```{r}
+ggplotly(kids%>%
+  filter(variable %in% variables$variable)%>%
+  filter(state %in% states)%>%
+  group_by(year,state,variable)%>%
+  summarize(total_infl_adj_perchild=sum(inf_adj_perchild))%>%
+  top_n(5,state)%>%
+  ggplot(aes(year,1000*total_infl_adj_perchild,color=state,label=state))+
+  geom_line(show.legend = FALSE)+
+  scale_y_continuous(labels = dollar)+
+  facet_wrap(~variable,scales = 'free_x')+
+  expand_limits(y=0)+
+  labs(x='',
+       y='')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)))
+```
+Parece ser que los ajustes a la inflación en los gastos del gobierno hacia los niños es algo dispar.
+Pero para profundizar sobre ello, necesito definir la variable, y tal como reza el portal de [jrosen](https://jrosen48.github.io/tidykids/articles/tidykids-codebook.html), la variable `pk12ed` tiene que ver con el gasto en educación primaria y secundaria, lo cual hace que tenga sentido el ajuste.
+
+
+
+Desarrollo del análisis de la evolución del `pk12ed`.
+
+```{r}
+ggplotly(kids%>%
+  filter(variable=='PK12ed')%>%
+  group_by(state)%>%
+  mutate(change=inf_adj_perchild/first(inf_adj_perchild)-1)%>%
+  ungroup()%>%
+  mutate(state=fct_reorder(state,change,max,.desc = TRUE))%>%
+  ggplot(aes(year,change,color=state))+
+  geom_line()+
+  geom_hline(yintercept = 0,color='gray')+
+  scale_y_continuous(labels = percent,breaks = c(0,1,2))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  facet_wrap(~state)+
+  guides(color=FALSE))
 ```
 
+El anterior gráfico muestra como ha sido el cambio en los gastos por estudiantes desde 1997, a través del incremento de la inflación ajustada.
 
 
+
+```{r}
+ggplotly(kids%>%
+  filter(variable=='highered')%>%
+  group_by(state)%>%
+  mutate(change=inf_adj_perchild/first(inf_adj_perchild)-1)%>%
+  ungroup()%>%
+  mutate(state=fct_reorder(state,change,max,.desc = TRUE))%>%
+  ggplot(aes(year,change,color=state))+
+  geom_line()+
+  geom_hline(yintercept = 0,color='gray')+
+  scale_y_continuous(labels = percent,breaks = c(0,1,2))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  facet_wrap(~state)+
+  guides(color=FALSE))
+```
+
+Ahora desarrollare un modelo multiple combinando el ajuste de la inflación sobre el gasto de educación por estudiante y estado.
+
+```{r}
+modelos<-kids%>%
+  filter(variable=='PK12ed')%>%
+  select(-c(raw,variable,inf_adj))%>%
+  nest(variables=c(year,inf_adj_perchild))%>%
+  mutate(models=map(variables,~lm(inf_adj_perchild~year,data=.x)))
+
+slopes<-modelos%>%
+  mutate(coefs = map(models, tidy)) %>%
+  unnest(coefs) %>%
+  filter(term == "year") %>%
+  mutate(p.value = p.adjust(p.value))
+
+ggplotly(slopes %>%
+  ggplot(aes(estimate, p.value, label = state)) +
+  geom_vline(
+    xintercept = 0, lty = 2,
+    size = 1.5, alpha = 0.7, color = "gray50"
+  ) +
+  geom_point(aes(color=state),show.legend = FALSE)+
+  expand_limits(x=-0.6)+
+  geom_text_repel(size = 3,force = TRUE)+
+  labs(x='Incremento en el gasto de PK12ed a través de la inflación ajustada'))
+```
+
+El siguiente gráfico indica lo siguiente :
+* La mayoría de los estados  estan del lado positivo de la pendiente, lo que indica que hay un aumento en el incremento del gasto público en la educación.
+* Entre más a la derecha este el país mayor es el aumento en educación, en este caso el Distrito de Columbia, es quien más está aportando, el análisis sobre el tamaño poblacional se dejará para una próxima oportunidad.
+* Las relaciones que se muestran en el y-label (pvalues), muestran que entre más abajo esten los datos hay relaciones más fuertes, mientras que los opuestos muestran que tienen una explicación escalonada.
+
+Voy a examinar este fenómeno en todas variables que definen el gasto público más para entender el comportamiento del mismo.
+
+```{r}
+variables$variable
+modelos<-kids%>%
+  select(-c(raw,inf_adj))%>%
+  nest(variables=c(year,inf_adj_perchild))%>%
+  mutate(models=map(variables,~lm(inf_adj_perchild~year,data=.x)))
+
+slopes<-modelos%>%
+  mutate(coefs = map(models, tidy)) %>%
+  unnest(coefs) %>%
+  filter(term == "year") %>%
+  mutate(p.value = p.adjust(p.value))
+
+ggplotly(slopes %>%
+  ggplot(aes(estimate, p.value, label = state)) +
+  geom_vline(
+    xintercept = 0, lty = 2,
+    size = 1.5, alpha = 0.7, color = "gray50"
+  ) +
+  geom_point(aes(color=state),show.legend = FALSE)+
+  expand_limits(x=-0.6)+
+  geom_text_repel(size = 3,force = TRUE)+
+  facet_wrap(~variable))
+```
+
+El anterior gráfico explica muy bien la relación del gasto en salud y educación a manera de concentración, lo cual denota la importancia en estos temas durante el período de estudio.
+
+Ahora, basado en el trabajo del doctor [Carlos Ospino, PHD](https://www.linkedin.com/in/cospino/), uno de los economistas que más admiro, ya que combina la econometría con el Big Data y de paso el ML, pienso desarrollar un modelo de regresión multiple basado en su trabajo.
+
+```{r}
+create_baseline_model <- function(x){
+  lm(inf_adj_perchild~., data = x)
+}
+ggplotly(kids%>%
+  filter(variable=='PK12ed')%>%
+  select(-c(raw,inf_adj,variable))%>%
+  group_by(state)%>%
+  nest()%>%
+  mutate(model = map(data, create_baseline_model))%>%
+  mutate(results = map(model, augment)) %>%
+  select(state, results) %>% 
+  unnest() %>% 
+  ungroup() %>% 
+  select(state, year, .resid) %>% 
+  ggplot(aes(x = year, y = .resid, color = state)) + 
+  geom_point(alpha = .1, show.legend = FALSE) + 
+  geom_smooth() + 
+  facet_wrap(~state, scales = "fixed")+
+  guides(color=FALSE))
+```
+
+Eso es todo por esta entrada. La intensión clara de la misma, más que mostrar como se hacen modelos multiples de regresión es ver el potencial de **shiny documents** para hacer reporting.
