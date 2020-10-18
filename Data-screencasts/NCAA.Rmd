@@ -1,0 +1,131 @@
+---
+title: "Tidytuesday NCAA Women's Basketball Tournament"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(tidytuesdayR)
+library(tidymodels)
+library(tidyverse)
+library(skimr)
+theme_set(theme_classic())
+```
+
+
+## NCAA Women's Basketball Tournament
+
+
+
+
+```{r}
+tuesdata <- tidytuesdayR::tt_load(2020, week = 41)
+tournament <- tuesdata$tournament
+```
+
+
+
+
+## How are structured data ?
+
+In this part, I wanna know the data behavior, for this I use `skmir` package.
+
+```{r}
+tournament%>%
+  skim()
+```
+
+Other alternative is :
+
+```{r}
+summary(tournament)%>%
+  skim()
+```
+
+
+
+
+
+## Exploratory Data Analysis 
+
+with this functiuón you cand find the frecuency for the general  total
+
+```{r}
+tournament%>%
+  count(year)%>%
+  count(n)
+```
+
+```{r}
+tournament<-tournament%>%
+  filter(year>=1994)
+```
+
+
+
+
+```{r}
+tournament%>%
+  ggplot(aes(full_w, tourney_w + reg_w))+
+  geom_point(alpha=0.1, color='blue')+
+  labs(title = 'Regular Wins before the tournament')+
+  theme(plot.title = element_text(hjust = .5))
+```
+
+
+
+```{r}
+tournament%>%
+  group_by(seed)%>%
+  summarize(n=n(),
+            pct_win=mean(tourney_finish=='Champ'))
+```
+
+
+For recreate levels
+
+```{r}
+levels<-c("1st","2nd","RSF","RF","NSF","N2nd","Champ")
+tournament<-tournament%>%
+  mutate(tourney_finish=fct_relevel(tourney_finish,levels))
+
+tournament%>%
+  group_by(seed)%>%
+  summarize(n=n(),
+            pct_win=mean(tourney_finish %in% c('Champ',"N2nd")))
+```
+
+
+
+
+```{r}
+tournament%>%
+  count(seed,tourney_finish)%>%
+  group_by(seed)%>%
+  mutate(pct= n/sum(n))%>%
+  ggplot(aes(tourney_finish,seed,fill=pct))+
+  geom_tile()+
+  geom_text(aes(label=percent(round(pct,2))))+
+  scale_y_continuous(breaks = seq(1,16), expand = c(0,0))+
+  scale_fill_gradient2(high = "blue", labels=percent)+
+  theme(panel.grid = element_blank())+
+  labs(x='Tournament Finish (worst to best)',
+       y='Strating Seed',
+       fill='% of seed')
+```
+
+
+
+```{r}
+tournament%>%
+  group_by(seed)%>%
+  summarize(n=n(),
+            pct_win=mean(tourney_finish=='Champ'),
+            avg_round=mean(as.integer(tourney_finish)))%>%
+  ggplot(aes(seed,avg_round))+
+  geom_line()
+```
+
