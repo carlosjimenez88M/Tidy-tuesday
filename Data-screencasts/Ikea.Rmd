@@ -1,0 +1,480 @@
+---
+title: "Ikea models"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE,message = FALSE)
+```
+
+
+## Ikea  
+
+```{r}
+#Libraries 
+library(tidyverse)
+library(tidymodels)
+library(tidytext)
+library(widyr)
+library(skimr)
+library(glue)
+library(scales)
+library(ggridges)
+library(broom)
+library(usemodels)
+library(textrecipes)
+library(keras)
+theme_set(theme_classic())
+cap='#Undatascientistdice'
+```
+
+
+```{r}
+ikea <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-11-03/ikea.csv')%>%
+  select(-c(X1,link))
+```
+
+
+
+## Exploratory Data Analysis
+
+```{r}
+ikea%>%
+  skim()
+```
+### Preprocesing
+
+```{r}
+ikea <- ikea %>%
+   transform(name = as.factor(name),
+             category = as.factor(category),
+             old_price = as.factor(old_price),
+             other_colors = as.factor(other_colors),
+             short_description = as.factor(short_description),
+             designer = as.factor(designer),
+             price= price * 0.27)
+
+ikea%>%
+  glimpse()
+```
+
+
+```{r}
+ikea%>%
+  count(category, sort = TRUE)%>%
+  mutate(category = fct_reorder(category,n))%>%
+  ggplot(aes(n,
+             category,
+             fill = category,
+             color = category))+
+  geom_col(alpha=0.5, 
+           show.legend = FALSE)+
+  labs(title = 'The most common Ikea`s category',
+       x ='# of items',
+       y = '',
+       caption= cap)+
+  theme(plot.title = element_text(hjust = 0.5,face = 'bold'))
+
+```
+
+
+```{r, fig.height=6}
+ikea_category_designer <- ikea%>%
+   group_by(category,designer)%>%
+   count(sort = TRUE)%>%
+   filter(n>=10)
+
+ikea_category_designer%>%
+  ungroup()%>%
+  filter(category != 'Beds')%>%
+  mutate(designer=reorder_within(designer,n,category))%>%
+  ggplot(aes(n,
+             designer,
+             color= category))+
+  geom_errorbarh(aes(xmin=0,xmax=n),
+                 height=0, 
+                 color='grey',
+                 show.legend = FALSE,
+                 alpha=0.5)+
+  geom_point(show.legend = FALSE, aes(size = n))+
+  scale_y_reordered()+
+  facet_wrap(~category, scales = 'free_y')+
+  labs(y = 'Designer',
+       x = 'Total of projects',
+       title = 'Relation between Ikeas`s Category/Designer',
+       caption = cap)
+  
+```
+
+
+```{r}
+ikea%>%
+  ggplot(aes(price, fill = category))+
+  geom_histogram(show.legend = FALSE,bins = 10)+
+  facet_wrap(~category, scales = 'free_y')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(y ='',
+       x = 'Price',
+       title = 'Distribution Price per Category',
+       caption = cap)
+```
+
+```{r, fig.height=6}
+ikea%>%
+  group_by(category,designer)%>%
+  summarize(avg_price = mean(price),
+            min_price = min(price),
+            max_price = max(price))%>%
+  ungroup()%>%
+  mutate(designer=reorder_within(designer,avg_price,category))%>%
+  top_n(18)%>%
+  ggplot(aes(avg_price,
+             designer,
+             color=category))+
+  geom_errorbarh(aes(xmin=min_price,xmax=max_price, height = 0), show.legend = FALSE)+
+  geom_point(show.legend = FALSE, aes(size= avg_price))+
+  scale_y_reordered()+
+  facet_wrap(~category, scales = 'free_y')+
+  labs(title = 'Relation Price-Designer per Category',
+       y = 'Designer',
+       x = 'Average Price')
+```
+
+
+
+
+```{r}
+ikea%>%
+  mutate(category = fct_reorder( category, price))%>%
+  ggplot(aes(price,
+             category))+
+  geom_boxplot()+
+  geom_jitter(alpha = 0.20, width = 0, height = .1)+
+  scale_x_log10()
+```
+
+Here we can find the real candidate for outliers price in this dataset, but is necesary agregate the total elements for category.
+
+
+
+```{r}
+ikea%>%
+  add_count(category, name = 'category_total')%>%
+  mutate(category = glue("{ category} ({category_total})"),
+         category = fct_reorder(category, price))%>%
+  ggplot(aes(price,category))+
+  geom_boxplot()+
+  geom_jitter(alpha = 0.20, width = 0, height = .1)+
+  scale_x_log10(labels = dollar)+
+  labs(y = '',
+       x= 'Price (log Price)',
+       title = 'How much do items in each category cost?')
+  
+```
+
+```{r}
+ikea%>%
+  add_count(category, name = 'category_total')%>%
+  mutate(category = glue("{ category} ({category_total})"),
+         category = fct_reorder(category, price))%>%
+  ggplot(aes(price,category, fill = other_colors))+
+  geom_density_ridges(alpha = 0.5)+
+  scale_x_log10(labels = dollar)+
+  
+  labs(y = '',
+       x= 'Price (log Price)',
+       title = 'How much do items in each category cost?',
+       fill = 'Other Colors')
+```
+
+```{r}
+ikea%>%
+  mutate(name= fct_lump(name,20))%>%
+  filter(name!= 'Other')%>%
+  count(name,category,sort=TRUE)%>%
+  mutate(name = fct_reorder(name,n,sum),
+         category = fct_reorder(category,n,sum))%>%
+  ggplot(aes(n,
+         name,
+         fill=category))+
+  geom_col()
+```
+
+
+```{r}
+ikea%>%
+  separate(short_description, c("main_description","rest"),", ", 
+           extra = 'merge',
+           fill = "right",
+           remove = FALSE)%>%
+  extract(rest,"numbers","([\\d\\-xX]+) cm", remove = FALSE)%>%
+  unite(category_description, category, main_description)%>%
+  count(category_description, sort=TRUE)
+```
+
+
+
+
+```{r}
+ikea_volumes <- ikea%>%
+   select(name,category,short_description,price,depth,height,width)%>%
+  mutate(volume = depth * height * width /1000000)%>%
+  filter(!is.na(volume))%>%
+  add_count(category,name = "category_total")
+
+
+ikea_volumes%>%
+  mutate(category = glue("{ category} ({category_total})"),
+         category = fct_reorder(category, volume))%>%
+  ggplot(aes(volume,category))+
+  geom_boxplot()+
+  scale_x_log10()+
+  labs(x='Volume m^3')
+
+
+```
+
+```{r}
+ikea_volumes%>%
+  mutate(category = fct_lump(category,6))%>%
+  ggplot(aes(volume,price,  color = category))+
+  geom_point()+
+  geom_smooth(method = 'lm')+
+  scale_x_log10()+
+  scale_y_log10()
+
+```
+
+### Choosing variables for the model.
+
+
+
+
+```{r}
+ikea%>%
+  mutate(volume = depth * height * width /1000000)%>%
+  filter(!is.na(volume))%>%
+  lm(log2(price)~ log2(volume) + category  ,data = .)%>%
+  tidy(conf.int=TRUE)%>%
+  filter(term!='(Intercept)')%>%
+  mutate(term = str_remove(term,"^category"))%>%
+  mutate(term= fct_reorder(term,estimate))%>%
+  ggplot(aes(estimate,term))+
+  geom_point()+
+  geom_errorbarh(aes(xmin = conf.low,xmax=conf.high), height =.1)+
+  geom_vline(xintercept = 0, color='red',lty = 2)
+```
+This relation have double impact, for this i think that the best option is with a machine learning model for eliminate linear trends. But maybe some insights here I can use how to feature.
+
+
+### Build a models
+
+
+
+```{r}
+ikea_df <- ikea %>%
+   mutate(volume = depth * height * width /1000000)%>%
+   filter(!is.na(volume))%>%
+   select(price, name, category,volume)%>%
+   mutate(price = log(price))
+```
+
+
+```{r}
+set.seed(123)
+ikea_split <- initial_split(ikea_df, strata = price)
+ikea_train <- training(ikea_split)
+ikea_test <- testing(ikea_split)
+
+set.seed(234)
+ikea_folds <- bootstraps(ikea_train, strata = price)
+ikea_folds
+```
+
+
+With **usemodels** We can capture the non-parametrics trends
+
+```{r}
+use_ranger(price ~ ., data = ikea_train)
+```
+
+```{r}
+
+ranger_recipe <-
+  recipe(formula = price ~ ., data = ikea_train) %>%
+  step_other(name, category, threshold = 0.01) %>%
+  step_clean_levels(name, category) 
+
+ranger_spec <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_mode("regression") %>% 
+  set_engine("ranger")
+
+ranger_workflow <- 
+  workflow() %>% 
+  add_recipe(ranger_recipe) %>% 
+  add_model(ranger_spec) 
+
+set.seed(9876)
+doParallel::registerDoParallel()
+ranger_tune <-
+  tune_grid(ranger_workflow,
+    resamples = ikea_folds,
+    grid = 11
+  )
+
+```
+
+
+
+```{r}
+show_best(ranger_tune, metric = "rmse")
+```
+
+```{r}
+autoplot(ranger_tune)
+```
+```{r}
+select_best(ranger_tune)
+final_rf <- ranger_workflow %>%
+  finalize_workflow(select_best(ranger_tune))
+ikea_fit <- last_fit(final_rf, ikea_split)
+collect_metrics(ikea_fit)
+
+```
+
+```{r}
+collect_predictions(ikea_fit) %>%
+  ggplot(aes(price, .pred)) +
+  geom_abline(lty = 2, color = "red") +
+  geom_point(alpha = 0.5, color = "gray") +
+  coord_fixed()+
+  labs(title = 'Adj for random Forest {Price predictions}',
+       x='Price',
+       y = 'Price Predictions')
+```
+
+With the random forest we have a good model, but, maybe with Neuronal Network for this prediction  improve  the output
+
+
+```{r}
+library(keras)
+library(tfdatasets)
+
+ikea_keras <- ikea%>%
+   select(where(is.numeric),-item_id)%>%
+  na.omit()
+   
+   
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+
+ikea_keras_n<-as.data.frame(lapply(ikea_keras, normalize))
+#ikea_keras_n$price <- ikea_keras$price
+set.seed(123)
+
+ikea_split <- initial_split(ikea_keras_n, strata = price)
+ikea_train <- training(ikea_split)%>%na.omit()
+ikea_test <- testing(ikea_split)%>%na.omit()
+
+
+```
+
+```{r}
+model %>% 
+  layer_dense(units = 15, activation = 'relu',input_shape = c(3) ) %>% 
+  layer_dense(units = 8, activation = 'relu') %>%
+  layer_dense(units = 1, activation = 'linear')
+
+model %>% compile(
+  loss = 'mse',
+  optimizer = optimizer_rmsprop(),
+  metrics = list("mean_absolute_error")
+)
+
+history <- model %>% fit(
+  x = ikea_train%>%
+    select(-c(price))%>%
+    as.matrix(), 
+  y = ikea_train%>%
+    select(price)%>%
+    as.matrix(), 
+  validation_split=0.2,
+  epochs = 50, batch_size =2
+)
+```
+```{r}
+plot(history)
+```
+
+```{r}
+library(MLmetrics)
+model%>%
+  evaluate(ikea_test%>%select(-c(price))%>%as.matrix(),ikea_test%>%select(price)%>%as.matrix())
+```
+
+
+## Last Alternative
+
+```{r}
+set.seed(123)
+ikea_split <- initial_split(ikea_df%>%
+                              select(-c(name,category)), strata = price)%>%na.omit()
+ikea_train <- training(ikea_split)
+ikea_test <- testing(ikea_split)
+
+set.seed(234)
+ikea_folds <- bootstraps(ikea_train, strata = price)
+ikea_folds
+use_xgboost(price~.,data = ikea_train)
+```
+```{r}
+xgboost_recipe <- 
+  recipe(formula = price ~ ., data = ikea_train) %>% 
+  step_zv(all_predictors()) 
+
+xgboost_spec <- 
+  boost_tree(trees = tune(), min_n = tune(), tree_depth = tune(), learn_rate = tune(), 
+    loss_reduction = tune(), sample_size = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("xgboost") 
+
+xgboost_workflow <- 
+  workflow() %>% 
+  add_recipe(xgboost_recipe) %>% 
+  add_model(xgboost_spec) 
+
+
+
+set.seed(77)
+doParallel::registerDoParallel()
+xgboost_tune <-
+  tune_grid(xgboost_workflow, 
+            resamples =  ikea_folds, 
+            grid =10)
+
+xgboost_tune
+show_best(xgboost_tune, metric = "rmse")
+```
+
+
+```{r}
+autoplot(xgboost_tune)
+```
+
+
+```{r}
+select_best(xgboost_tune)
+```
+
+```{r}
+final_xgb <- xgboost_workflow %>%
+  finalize_workflow(select_best(xgboost_tune))
+
+ikea_fit <- last_fit(final_xgb, ikea_split)
+collect_metrics(ikea_fit)
+```
+
+With this model , We dont cant working! 
