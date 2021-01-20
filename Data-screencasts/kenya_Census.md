@@ -1,14 +1,9 @@
----
-title: "Kenya Census"
-output: github_document
----
+Kenya Census
+================
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
-```
+## Libraries
 
-## Libraries 
-```{r}
+``` r
 library(tidyverse)
 library(tidymodels)
 library(scales)
@@ -21,27 +16,23 @@ library(broom)
 theme_set(theme_solarized())
 ```
 
-## Data 
+## Data
 
-```{r}
+``` r
 gender <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-19/gender.csv')
 crops <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-19/crops.csv')
 households <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-19/households.csv')
-
 ```
-
 
 ## Explore Data Analysis
 
-```{r}
+``` r
 img <- readJPEG("kenya.jpeg")
 ```
 
 ## Kenya Population Pyramids
 
-
-
-```{r}
+``` r
 abs_commma <- function(x) {comma(abs(x))}
 gender%>%
   filter(County!='Total')%>%
@@ -64,11 +55,11 @@ gender%>%
   theme(plot.title = element_text(hjust = 0.5,face = "bold",color='black'),
         legend.position = "bottom",
         axis.text.y = element_text(size = 6))
-  
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
-```{r}
+``` r
 gender%>%
   clean_names()%>%
   filter(county!='Total')%>%
@@ -84,12 +75,11 @@ gender%>%
   theme(plot.title = element_text(hjust = 0.5,face = "bold",color='black'),
         plot.subtitle = element_text(hjust = 0.5,face = "bold",color='black'),
         axis.text.y = element_text(size = 6))
-  
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
-
-```{r}
+``` r
 # Hogares
 households<-households%>%
   clean_names()%>%
@@ -99,10 +89,23 @@ households<-households%>%
 crops
 ```
 
+    ## # A tibble: 48 x 11
+    ##    SubCounty Farming    Tea Coffee Avocado Citrus  Mango Coconut Macadamia
+    ##    <chr>       <dbl>  <dbl>  <dbl>   <dbl>  <dbl>  <dbl>   <dbl>     <dbl>
+    ##  1 KENYA     6354211 476613 478936  966976 177445 796867   90952    195999
+    ##  2 MOMBASA     12497     NA     NA      NA     NA     NA    1688        NA
+    ##  3 KWALE      108074     NA     NA    1063  10053  30272   31954       881
+    ##  4 KILIFI     161188     NA     NA      NA   6808  37519   47561        NA
+    ##  5 TANA RIV…   35094     NA     NA      NA   1109   6561    2228        NA
+    ##  6 LAMU        18678     NA     NA      NA   2742   7423    5017       189
+    ##  7 TAITA/TA…   56920     NA     NA    7963   3284   7171    2504      3650
+    ##  8 GARISSA     47645     NA     NA      NA     NA   1726      NA        NA
+    ##  9 WAJIR       63433     NA     NA      NA     NA     NA      NA        NA
+    ## 10 MANDERA     62639     NA     NA      NA     NA   2685      NA        NA
+    ## # … with 38 more rows, and 2 more variables: `Cashew Nut` <dbl>, `Khat
+    ## #   (Miraa)` <dbl>
 
-
-
-```{r}
+``` r
 gender%>%
   clean_names()%>%
   mutate(pct_female=(female/total)*100,
@@ -122,14 +125,11 @@ gender%>%
        caption = "#Undatascientistdice",
        x='')+
   theme(plot.title = element_text(hjust = 0.5,face = "bold",color='black'))
-  
-    
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
-
-
-```{r}
+``` r
 library(tidytext)
 gender_c<-gender%>%
   clean_names()%>%
@@ -148,9 +148,9 @@ gender_c%>%
   facet_wrap(~pct_gender, scales = 'free_y')
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
-
-```{r}
+``` r
 households%>%
   filter(county!='Kenya')%>%
   arrange(desc(average_household_size))%>%
@@ -164,9 +164,11 @@ households%>%
   scale_x_continuous(labels = comma)
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
 ### Crops
 
-```{r}
+``` r
 crops_type<-crops%>%
   gather(crop,households,-SubCounty,-Farming)%>%
   filter(!is.na(households))
@@ -180,11 +182,11 @@ crops_type%>%
   geom_col()
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ## Linear model to each county crop combination (Avocado,Citrus,Mango)
 
-
-```{r}
+``` r
 crops_type%>%
   rename(county=SubCounty)%>%
   mutate(county=str_to_title(county))%>%
@@ -195,32 +197,30 @@ crops_type%>%
   ggplot(aes(Farming,households,color=crop))+
   geom_line()+
   geom_point()
-
-
 ```
 
+![](kenya_Census_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
-```{r}
+``` r
 lineal_model<-crops_type%>%
   filter(county!='Kenya')%>%
   filter(crop %in% c('Mango','Citrus','Avocado'))
-  
 ```
 
-
-```{r}
+``` r
 lineal_model <-lm(households~.,data = lineal_model)
 ```
 
-
-```{r}
+``` r
 lineal_model%>%
   augment() %>%
   ggplot(aes(x = crop, y = .resid)) + 
   geom_point()
 ```
 
-```{r}
+![](kenya_Census_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+``` r
 lineal_model<-crops_type%>%
   filter(county!='Kenya')%>%
   filter(crop %in% c('Mango','Citrus','Avocado'))
@@ -232,8 +232,15 @@ lineal_model%>%
   }))
 ```
 
+    ## # A tibble: 3 x 3
+    ## # Groups:   crop [3]
+    ##   crop    data              model 
+    ##   <chr>   <list>            <list>
+    ## 1 Avocado <tibble [35 × 3]> <lm>  
+    ## 2 Citrus  <tibble [37 × 3]> <lm>  
+    ## 3 Mango   <tibble [39 × 3]> <lm>
 
-```{r}
+``` r
 create_baseline_model <- function(x){
   lm(households~., data = x)
 }
@@ -251,7 +258,6 @@ lineal_model%>%
   geom_point(alpha = .1) + 
   geom_smooth() + 
   facet_wrap(~crop, scales = "free")
-
 ```
 
-
+![](kenya_Census_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
