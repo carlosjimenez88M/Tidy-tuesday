@@ -359,7 +359,7 @@ With the random forest we have a good model, but, maybe with Neuronal Network fo
 
 ```{r}
 library(keras)
-library(tfdatasets)
+
 
 ikea_keras <- ikea%>%
    select(where(is.numeric),-item_id)%>%

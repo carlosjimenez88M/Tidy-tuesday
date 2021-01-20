@@ -1,0 +1,151 @@
+---
+title: "Women Template"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, warning = FALSE,message = FALSE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(plotly)
+library(widyr)
+library(tidymetrics)
+theme_set(theme_bw())
+library(htmlwidgets)
+```
+
+
+
+```{r}
+women <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-12-08/women.csv')
+
+```
+
+
+```{r}
+women%>%
+  count(country, sort=TRUE)
+
+
+women<-women%>%
+  filter(category !='All',
+         country !='Worldwide')
+```
+
+## Diagramas de violin
+
+Son un mix entre diagrama de cajas y de kernel
+
+```{r}
+women%>%
+  group_by(category,country)%>%
+  count(sort=TRUE)%>%
+  mutate(category=fct_reorder(category,n))%>%
+  ggplot(aes(n,category, fill=category, col= category))+
+  geom_violin(alpha=0.4)
+```
+
+
+
+
+
+```{r}
+
+women%>%
+  group_by(country,category)%>%
+  count(sort = TRUE)%>%
+  ungroup()%>%
+  mutate(country=fct_reorder(country,n,sum))%>%
+  ggplot(aes(n,country, fill=category))+
+  geom_bar(stat="identity")+
+  #xlim(-10,20) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(rep(-1,4), "cm")
+  ) +
+  coord_polar(start = 0)
+```
+
+
+
+```{r}
+data <- data.frame(
+  individual=paste( "Mister ", seq(1,60), sep=""),
+  value=sample( seq(10,100), 60, replace=T)
+)
+ 
+
+empty_bar <- 10
+ 
+
+to_add <- matrix(NA, empty_bar, ncol(data))
+colnames(to_add) <- colnames(data)
+data <- rbind(data, to_add)
+data$id <- seq(1, nrow(data))
+ 
+
+label_data <- data
+number_of_bar <- nrow(label_data)
+angle <- 90 - 360 * (label_data$id-0.5) /number_of_bar     # I substract 0.5 because the letter must have the angle of the center of the bars. Not extreme right(1) or extreme left (0)
+label_data$hjust <- ifelse( angle < -90, 1, 0)
+label_data$angle <- ifelse(angle < -90, angle+180, angle)
+ 
+# Make the plot
+p <- ggplot(data, aes(x=as.factor(id), y=value)) +       # Note that id is a factor. If x is numeric, there is some space between the first bar
+  geom_bar(stat="identity", fill=alpha("green", 0.3)) +
+  ylim(-100,120) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(rep(-1,4), "cm") 
+  ) +
+  coord_polar(start = 0) + 
+  geom_text(data=label_data, aes(x=id, y=value+10, label=individual, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+ 
+p
+```
+
+```{r}
+data<-women%>%
+  group_by(country,category)%>%
+  count(sort = TRUE)%>%
+  ungroup()
+empty_bar <- 82
+to_add <- matrix(NA, empty_bar, ncol(data))
+colnames(to_add) <- colnames(data)
+data <- rbind(data, to_add)
+data$id <- seq(1, nrow(data))
+
+
+
+label_data <- data
+number_of_bar <- nrow(label_data)
+angle <- 90 - 360 * (label_data$id-0.5) /number_of_bar
+label_data$hjust <- ifelse( angle < -90, 1, 0)
+label_data$angle <- ifelse(angle < -90, angle+180, angle)
+
+
+ggplot(data, aes(x=as.factor(id), y=n)) +
+  geom_bar(stat="identity", fill=alpha("green", 0.3)) +
+  ylim(-1,5) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = unit(rep(-1,4), "cm") 
+  )+
+  coord_polar(start = 0) +
+  geom_text(data=label_data, aes(x=id, y=value+10, label=individual, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+ 
+```
+
