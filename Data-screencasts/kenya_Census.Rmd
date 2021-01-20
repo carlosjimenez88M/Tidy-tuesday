@@ -1,0 +1,79 @@
+---
+title: "Kenya Census"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+## Libraries 
+```{r}
+library(tidyverse)
+library(scales)
+library(ggpubr)
+library(ggimage) 
+library(ggthemes)
+library(jpeg)
+library(janitor)
+theme_set(theme_solarized())
+```
+
+## Data 
+
+```{r}
+gender <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-19/gender.csv')
+crops <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-19/crops.csv')
+households <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-19/households.csv')
+
+```
+
+
+## Explore Data Analysis
+
+```{r}
+img <- readJPEG("kenya.jpeg")
+```
+
+## Kenya Population Pyramids
+
+
+
+```{r}
+abs_commma <- function(x) {comma(abs(x))}
+gender%>%
+  filter(County!='Total')%>%
+  mutate(County=fct_reorder(County,-Total))%>%
+  ggplot(aes(Male,County))+
+  background_image(img)+
+  geom_col(aes(fill="blue"))+
+  #scale_fill_manual(values = "blue")+
+  geom_col(aes(-Female,County,fill="red"))+
+  scale_fill_manual(values = c("blue","red"),
+                    name="Gender",
+                    breaks=c("blue","red"),
+                    labels=c("Male","Female"))+
+  scale_x_continuous(labels = abs_commma)+
+  labs(x='',
+       y='County',
+       title = 'Kenya Population Pyramids',
+       caption = '#UnDatascientistdice',
+       fill="")+
+  theme(plot.title = element_text(hjust = 0.5,face = "bold",color='black'),
+        legend.position = "bottom",
+        axis.text.y = element_text(size = 6))
+  
+```
+
+
+
+```{r}
+# Hogares
+households<-households%>%
+  clean_names()%>%
+  mutate(county=str_trim(county))
+
+## Cultivos
+crops
+```
+
