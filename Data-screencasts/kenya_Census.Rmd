@@ -10,12 +10,14 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 ## Libraries 
 ```{r}
 library(tidyverse)
+library(tidymodels)
 library(scales)
 library(ggpubr)
 library(ggimage) 
 library(ggthemes)
 library(jpeg)
 library(janitor)
+library(broom)
 theme_set(theme_solarized())
 ```
 
@@ -66,6 +68,26 @@ gender%>%
 ```
 
 
+```{r}
+gender%>%
+  clean_names()%>%
+  filter(county!='Total')%>%
+  gather(gender,population, male,female,intersex)%>%
+  mutate(county=fct_reorder(county,total,sum))%>%
+  mutate(gender=str_to_title(gender))%>%
+  ggplot(aes(population,county,fill=gender))+
+  geom_col()+
+  #scale_x_log10()
+  scale_x_continuous(labels = comma)+
+  labs(title = "Kenya Counties Total Population",
+       subtitle = "by gender")+
+  theme(plot.title = element_text(hjust = 0.5,face = "bold",color='black'),
+        plot.subtitle = element_text(hjust = 0.5,face = "bold",color='black'),
+        axis.text.y = element_text(size = 6))
+  
+```
+
+
 
 ```{r}
 # Hogares
@@ -76,4 +98,160 @@ households<-households%>%
 ## Cultivos
 crops
 ```
+
+
+
+
+```{r}
+gender%>%
+  clean_names()%>%
+  mutate(pct_female=(female/total)*100,
+         pct_male =(male/total)*100,
+         differences=abs(pct_male-pct_female))%>%
+  filter(county!='Total')%>%
+  mutate(county=fct_reorder(county,differences,sum))%>%
+  ggplot(aes(y=county))+
+  geom_segment(aes(x=pct_female,xend=pct_male,yend=county), linetype="dashed",color="gray")+
+  geom_vline(xintercept = 50, color='black',linetype="dashed")+
+  geom_point(aes(x=pct_female,color='pct_female'))+
+  geom_point(aes(x=pct_male,color='pct_male'))+
+  scale_color_manual(values = c("blue","red"),
+                    name="Gender",
+                    labels=c("Male","Female"))+
+  labs(title = "Kenya Gender Differences  by counties",
+       caption = "#Undatascientistdice",
+       x='')+
+  theme(plot.title = element_text(hjust = 0.5,face = "bold",color='black'))
+  
+    
+```
+
+
+
+
+```{r}
+library(tidytext)
+gender_c<-gender%>%
+  clean_names()%>%
+  filter(county!='Total')%>%
+  mutate(pct_female=(female/total)*100,
+         pct_male =(male/total)*100)%>%
+  gather(pct_gender,perc,pct_female,pct_male)%>%
+  select(-c(male:intersex))%>%
+  ungroup()
+gender_c%>%
+  mutate(pct_gender=as.factor(pct_gender),
+         county=reorder_within(county,total,pct_gender))%>%
+  ggplot(aes(total,county,fill=pct_gender))+
+  geom_col(show.legend = FALSE)+
+  scale_y_reordered()+
+  facet_wrap(~pct_gender, scales = 'free_y')
+```
+
+
+
+```{r}
+households%>%
+  filter(county!='Kenya')%>%
+  arrange(desc(average_household_size))%>%
+  ggplot(aes(population,average_household_size))+
+  geom_point()+
+  geom_smooth()+
+  geom_text(aes(label=county),
+            vjust=1,
+            hjust=1)+
+  expand_limits(y=0)+
+  scale_x_continuous(labels = comma)
+```
+
+### Crops
+
+```{r}
+crops_type<-crops%>%
+  gather(crop,households,-SubCounty,-Farming)%>%
+  filter(!is.na(households))
+
+crops_type%>%
+  rename(county=SubCounty)%>%
+  mutate(county=str_to_title(county))%>%
+  filter(county!='Kenya')%>%
+  mutate(county=fct_reorder(county,households,sum))%>%
+  ggplot(aes(households,county,fill=crop))+
+  geom_col()
+```
+
+
+## Linear model to each county crop combination (Avocado,Citrus,Mango)
+
+
+```{r}
+crops_type%>%
+  rename(county=SubCounty)%>%
+  mutate(county=str_to_title(county))%>%
+  filter(county!='Kenya')->crops_type
+
+crops_type%>%
+  filter(crop %in% c('Mango','Citrus','Avocado'))%>%
+  ggplot(aes(Farming,households,color=crop))+
+  geom_line()+
+  geom_point()
+
+
+```
+
+
+```{r}
+lineal_model<-crops_type%>%
+  filter(county!='Kenya')%>%
+  filter(crop %in% c('Mango','Citrus','Avocado'))
+  
+```
+
+
+```{r}
+lineal_model <-lm(households~.,data = lineal_model)
+```
+
+
+```{r}
+lineal_model%>%
+  augment() %>%
+  ggplot(aes(x = crop, y = .resid)) + 
+  geom_point()
+```
+
+```{r}
+lineal_model<-crops_type%>%
+  filter(county!='Kenya')%>%
+  filter(crop %in% c('Mango','Citrus','Avocado'))
+lineal_model%>%
+  group_by(crop)%>%
+  nest()%>%
+   mutate(model = map(data, function(x){
+    lm(households~., data = x)
+  }))
+```
+
+
+```{r}
+create_baseline_model <- function(x){
+  lm(households~., data = x)
+}
+
+lineal_model%>%
+  group_by(crop)%>%
+  nest()%>%
+  mutate(model = map(data, create_baseline_model)) %>% 
+  mutate(results = map(model, augment))%>%
+  select(crop, results) %>% 
+  unnest() %>% 
+  ungroup()%>%
+  select(crop, households, .resid)%>%
+  ggplot(aes(x = households, y = .resid, color = crop)) + 
+  geom_point(alpha = .1) + 
+  geom_smooth() + 
+  facet_wrap(~crop, scales = "free")
+
+```
+
 
