@@ -1,0 +1,282 @@
+---
+title: "Untitled"
+author: "Daniel Jiménez"
+date: "1/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(widyr)
+library(textrecipes)
+library(janitor)
+library(tidytext)
+theme_set(theme_classic())
+```
+
+
+## Solución end to end (sin deploy) del Art Media
+
+Pocas veces un dataset me llama tanto la atención como este! Por ello en esta oportunidad quiero hacer una combinación de EDA y Machine Learning Modelling 
+
+
+
+```{r}
+artwork <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-01-12/artwork.csv')
+artists <- readr::read_csv("https://github.com/tategallery/collection/raw/master/artist_data.csv")
+
+```
+
+
+## EDA
+
+```{r}
+artists<-artists%>%
+  clean_names()
+
+artwork<-artwork%>%
+  clean_names()
+```
+
+
+```{r}
+# Esta es una forma de ver los materiales 
+artwork%>%
+  filter(artist!="Turner, Joseph Mallord William")%>%
+  extract(medium,c("medium1","medium2"),"(.*) on (.*)")%>% # Expresión regular
+  count(medium2, sort = TRUE)%>%
+  replace_na(list(medium2 = "Missing"))%>%
+  mutate(medium2 = fct_reorder(medium2,n))%>%
+  head(20)%>%
+  ggplot(aes(n,medium2))+
+  geom_col()
+
+```
+
+
+```{r}
+# Otra forma de separar
+artwork %>%
+  filter(artist!="Turner, Joseph Mallord William")%>%
+  separate(medium, 
+           c("medium", "surface"), 
+           sep = " on ",
+           fill = "right", 
+           extra = "merge")%>%
+  count(medium, sort = TRUE)%>%
+  replace_na(list(medium = "Missing"))%>%
+  mutate(medium = fct_reorder(medium,n))%>%
+  head(20)%>%
+  ggplot(aes(n,medium))+
+  geom_col()+
+  labs(y='Medium',
+       x='# pieces in Tate Morden')
+```
+
+
+```{r}
+artwork%>%
+  filter(artist!="Turner, Joseph Mallord William")%>%
+  filter(fct_lump(artist,10) != "Other")%>%
+  mutate(medium = str_remove(medium," on.*"))%>%
+  mutate(medium = fct_lump(medium,10))%>%
+  filter(!is.na(medium))%>%
+  count(artist,medium, sort = TRUE)%>%
+  mutate(artist= fct_reorder(artist,n,sum))%>%
+  ggplot(aes(n,artist, fill=medium))+
+  geom_col()
+```
+
+
+```{r}
+artwork%>%
+  filter(artist!="Turner, Joseph Mallord William")->artwork
+
+artwork %>%
+  separate(medium, 
+           c("medium", "surface"), 
+           sep = " on ",
+           fill = "right", 
+           extra = "merge")%>%
+  mutate(medium=str_trim(medium))%>%
+  filter(!is.na(medium),
+         medium!='Other')%>%
+  filter(year>=1900)%>%
+  count(decade=round(year-1),
+        medium=fct_lump(medium,8))%>%
+  complete(decade,medium, fill=list(n=0))%>%
+    group_by(decade)%>%
+  mutate(pct=n/sum(n))%>%
+  ungroup()->by_decade_medium
+by_decade_medium%>%
+  ggplot(aes(decade,
+             pct,
+             fill=medium))+
+  geom_area()
+```
+
+
+```{r}
+library(scales)
+by_decade_medium%>%
+  filter(!is.na(medium))%>%
+  mutate(medium = fct_reorder(medium, n, sum))%>%
+  ggplot(aes(decade,pct,fill=medium))+
+  geom_area()+
+  scale_y_continuous(labels = percent)+
+  labs(x='Decade',
+       y='% of Tate Modern artwork')
+```
+
+```{r}
+artwork%>%
+  mutate(decade=(year%/%10)*10)%>%
+  filter(units == "mm",
+         !is.na(height),
+         !is.na(width)) %>%
+  mutate(area = (height / 1000) * (width / 1000),
+         ratio = width / height)%>%
+  filter(!is.na(decade))%>%
+  filter(decade>=1800)%>%
+  ggplot(aes(decade,area,group=decade))+
+  geom_boxplot()+
+  scale_y_log10()
+```
+
+
+```{r}
+
+artwork%>%
+  mutate(decade=(year%/%10)*10)%>%
+  filter(units == "mm",
+         !is.na(height),
+         !is.na(width)) %>%
+  mutate(area = (height / 1000) * (width / 1000),
+         ratio = width / height)->artwork_size
+artwork_size %>%
+  group_by(artist) %>%
+  summarize(n_pieces = n(),
+            avg_year = mean(year, na.rm = TRUE),
+            first_year = min(year, na.rm = TRUE),
+            last_year = max(year, na.rm = TRUE),
+            median_area = median(area),
+            median_ratio = median(ratio)) %>%
+  arrange(desc(n_pieces))
+```
+
+```{r}
+library(glue)
+artwork_size %>%
+  extract(medium, "medium_on", " on (.*)", remove = FALSE) %>%
+  filter(fct_lump(artist, 25) != "Other") %>%
+  add_count(artist) %>%
+  mutate(artist = glue("{ artist } ({ n })")) %>%
+  mutate(artist = fct_reorder(artist, ratio)) %>%
+  ggplot(aes(ratio, artist)) +
+  geom_boxplot() +
+  geom_vline(xintercept = c(3 / 4, 4 / 3),
+             linetype = "dashed", color = "red") +
+  scale_x_log10(limits = c(.25, 4)) +
+  labs(x = "Ratio (width / height)",
+       y = "",
+       title = "What aspect ratio do artists work in?",
+       subtitle = "For the 25 most common artists in the Tate")
+```
+
+## Biuld a Model 
+
+
+```{r}
+tate_df <- artwork %>%
+  filter(year > 1750) %>%
+  select(year, medium) %>%
+  na.omit() %>%
+  arrange(year)
+
+
+```
+¿Cuáles son las palabras más comunes para describir the media?
+
+```{r}
+tate_df %>%
+  unnest_tokens(word, medium) %>%
+  count(word, sort = TRUE)
+```
+```{r}
+set.seed(123)
+art_split <- initial_split(tate_df, strata = year)
+art_train <- training(art_split)
+art_test <- testing(art_split)
+
+set.seed(234)
+art_folds <- vfold_cv(art_train, strata = year)
+art_folds
+```
+
+
+
+```{r}
+art_rec <- recipe(year ~ medium, data = art_train) %>%
+  step_tokenize(medium) %>%
+  step_stopwords(medium) %>%
+  step_tokenfilter(medium, max_tokens = 500) %>%
+  step_tfidf(medium)
+```
+
+```{r}
+sparse_bp <- hardhat::default_recipe_blueprint(composition = "dgCMatrix")
+
+lasso_spec <- linear_reg(penalty = tune(), mixture = 1) %>%
+  set_engine("glmnet")
+
+art_wf <- workflow() %>%
+  add_recipe(art_rec, blueprint = sparse_bp) %>%
+  add_model(lasso_spec)
+
+lambda_grid <- grid_regular(penalty(range = c(-3, 0)), levels = 20)
+```
+
+
+
+```{r}
+doParallel::registerDoParallel()
+set.seed(1234)
+
+lasso_rs <- tune_grid(
+  art_wf,
+  resamples = art_folds,
+  grid = lambda_grid
+)
+
+lasso_rs
+```
+
+
+```{r}
+autoplot(lasso_rs)
+```
+
+
+```{r}
+show_best(lasso_rs, "rmse")
+```
+
+```{r}
+best_rmse <- select_best(lasso_rs, "rmse")
+final_lasso <- finalize_workflow(art_wf, best_rmse)
+final_lasso
+```
+
+```{r}
+art_final <- last_fit(final_lasso, art_split)
+collect_metrics(art_final)
+```
+
