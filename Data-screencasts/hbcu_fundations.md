@@ -381,7 +381,7 @@ h2o.init(ip = "localhost",
     ##  Connection successful!
     ## 
     ## R is connected to the H2O cluster: 
-    ##     H2O cluster uptime:         1 hours 31 minutes 
+    ##     H2O cluster uptime:         1 hours 33 minutes 
     ##     H2O cluster timezone:       America/Bogota 
     ##     H2O data parsing timezone:  UTC 
     ##     H2O cluster version:        3.32.0.1 
@@ -425,9 +425,9 @@ isoforest
     ## Model ID:  isoforest 
     ## Model Summary: 
     ##   number_of_trees number_of_internal_trees model_size_in_bytes min_depth
-    ## 1              50                       50                9136         3
+    ## 1              50                       50                8978         3
     ##   max_depth mean_depth min_leaves max_leaves mean_leaves
-    ## 1         9    6.30000          5         16     9.96000
+    ## 1         7    5.00000          5         15     9.66000
     ## 
     ## 
     ## H2OAnomalyDetectionMetrics: isolationforest
@@ -446,12 +446,12 @@ head(predicciones)
 ```
 
     ##     predict mean_length
-    ## 1 1.0000000        0.00
-    ## 2 0.3415638        3.20
-    ## 3 0.3456790        3.18
-    ## 4 0.4032922        2.90
-    ## 5 0.4691358        2.58
-    ## 6 0.3168724        3.32
+    ## 1 0.8777778        1.78
+    ## 2 0.2888889        2.84
+    ## 3 0.3444444        2.74
+    ## 4 0.4333333        2.58
+    ## 5 0.6444444        2.20
+    ## 6 0.2555556        2.90
 
 ``` r
 predicciones%>%
@@ -486,7 +486,9 @@ datos%>%
   labs(title = "Distancia  Isolation Forest",
      x = "",
      y = "Distancia promedio") +
-theme(legend.position = "none")
+theme(legend.position = "none")+
+  theme_classic()+
+  guides(color=FALSE)
 ```
 
 ![](hbcu_fundations_files/figure-gfm/unnamed-chunk-28-1.png)<!-- -->

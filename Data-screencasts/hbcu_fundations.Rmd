@@ -348,7 +348,9 @@ datos%>%
   labs(title = "Distancia  Isolation Forest",
      x = "",
      y = "Distancia promedio") +
-theme(legend.position = "none")
+theme(legend.position = "none")+
+  theme_classic()+
+  guides(color=FALSE)
 ```
 
 Encontramos lo que parecía un dato atípico! Pero no! su comportamiento esta dentro de lo normal.
