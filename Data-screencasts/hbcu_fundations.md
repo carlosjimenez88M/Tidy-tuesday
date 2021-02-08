@@ -10,7 +10,7 @@ library(tidytext)
 library(ggthemes)
 library(knitr)
 library(scales)
-theme_set(theme_wsj())
+theme_set(theme_bw())
 library(modeldata)
 library(forecast)
 library(broom)
@@ -373,6 +373,7 @@ modelo es bueno para prónosticar.
 Para encontrar lo datos atípicos trabajaré con un isolation forest.
 
 ``` r
+set.seed(123)
 h2o.init(ip = "localhost",
          nthreads = -1,
          max_mem_size = "4g")
@@ -381,7 +382,7 @@ h2o.init(ip = "localhost",
     ##  Connection successful!
     ## 
     ## R is connected to the H2O cluster: 
-    ##     H2O cluster uptime:         1 hours 33 minutes 
+    ##     H2O cluster uptime:         1 hours 37 minutes 
     ##     H2O cluster timezone:       America/Bogota 
     ##     H2O data parsing timezone:  UTC 
     ##     H2O cluster version:        3.32.0.1 
@@ -407,6 +408,7 @@ datos_h2o <- as.h2o(x = hbcu_all$total_public)
 ```
 
 ``` r
+set.seed(234)
 isoforest <- h2o.isolationForest(
                 model_id = "isoforest",
                 training_frame = datos_h2o,
@@ -425,9 +427,9 @@ isoforest
     ## Model ID:  isoforest 
     ## Model Summary: 
     ##   number_of_trees number_of_internal_trees model_size_in_bytes min_depth
-    ## 1              50                       50                8978         3
+    ## 1              50                       50                8696         2
     ##   max_depth mean_depth min_leaves max_leaves mean_leaves
-    ## 1         7    5.00000          5         15     9.66000
+    ## 1         8    5.02000          4         15     9.24000
     ## 
     ## 
     ## H2OAnomalyDetectionMetrics: isolationforest
@@ -437,6 +439,7 @@ isoforest
 Con el modelo listo, se generan las distancias de aislamiento proemdio
 
 ``` r
+set.seed(432)
 predicciones_h2o <- h2o.predict(
                       object  = isoforest,
                       newdata = datos_h2o
@@ -446,12 +449,12 @@ head(predicciones)
 ```
 
     ##     predict mean_length
-    ## 1 0.8777778        1.78
-    ## 2 0.2888889        2.84
-    ## 3 0.3444444        2.74
-    ## 4 0.4333333        2.58
-    ## 5 0.6444444        2.20
-    ## 6 0.2555556        2.90
+    ## 1 1.0000000        1.00
+    ## 2 0.7982456        1.46
+    ## 3 0.8859649        1.26
+    ## 4 0.9385965        1.14
+    ## 5 0.9473684        1.12
+    ## 6 0.7631579        1.54
 
 ``` r
 predicciones%>%
@@ -466,7 +469,8 @@ ggplot(aes(x = mean_length)) +
 ```
 
 ![](hbcu_fundations_files/figure-gfm/unnamed-chunk-26-1.png)<!-- -->
-Todo parece indicar que solo hay un dato atípico.
+Todo parece indicar que solo hay datos con valores un poco altos pero no
+atípicos.
 
 ``` r
 cuantiles <- quantile(x = predicciones$mean_length, probs = seq(0, 1, 0.05))

@@ -17,7 +17,7 @@ library(tidytext)
 library(ggthemes)
 library(knitr)
 library(scales)
-theme_set(theme_wsj())
+theme_set(theme_bw())
 library(modeldata)
 library(forecast)
 library(broom)
@@ -279,6 +279,7 @@ El punto rojo fuera del circulo es la raíz compleja, e indica que el modelo es 
 Para encontrar lo datos atípicos trabajaré con un isolation forest. 
 
 ```{r}
+set.seed(123)
 h2o.init(ip = "localhost",
          nthreads = -1,
          max_mem_size = "4g")
@@ -290,6 +291,7 @@ datos_h2o <- as.h2o(x = hbcu_all$total_public)
 ```
 
 ```{r}
+set.seed(234)
 isoforest <- h2o.isolationForest(
                 model_id = "isoforest",
                 training_frame = datos_h2o,
@@ -304,6 +306,7 @@ isoforest
 Con el modelo listo, se generan las distancias de aislamiento proemdio
 
 ```{r}
+set.seed(432)
 predicciones_h2o <- h2o.predict(
                       object  = isoforest,
                       newdata = datos_h2o
@@ -323,7 +326,7 @@ ggplot(aes(x = mean_length)) +
   labs(
     title = "Distribución de las distancias con el Isolation Forest")
 ```
-Todo parece indicar que solo hay un dato atípico.
+Todo parece indicar que solo hay datos con valores un poco altos pero no atípicos.
 
 ```{r}
 
