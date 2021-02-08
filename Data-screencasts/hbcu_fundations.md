@@ -381,7 +381,7 @@ h2o.init(ip = "localhost",
     ##  Connection successful!
     ## 
     ## R is connected to the H2O cluster: 
-    ##     H2O cluster uptime:         1 hours 24 minutes 
+    ##     H2O cluster uptime:         1 hours 26 minutes 
     ##     H2O cluster timezone:       America/Bogota 
     ##     H2O data parsing timezone:  UTC 
     ##     H2O cluster version:        3.32.0.1 
@@ -425,9 +425,9 @@ isoforest
     ## Model ID:  isoforest 
     ## Model Summary: 
     ##   number_of_trees number_of_internal_trees model_size_in_bytes min_depth
-    ## 1              50                       50                9161         4
+    ## 1              50                       50                8940         3
     ##   max_depth mean_depth min_leaves max_leaves mean_leaves
-    ## 1         8    5.14000          6         16     9.94000
+    ## 1         8    5.56000          5         16     9.60000
     ## 
     ## 
     ## H2OAnomalyDetectionMetrics: isolationforest
@@ -446,12 +446,12 @@ head(predicciones)
 ```
 
     ##     predict mean_length
-    ## 1 1.0000000        1.26
-    ## 2 0.6696429        2.00
-    ## 3 0.7053571        1.92
-    ## 4 0.7857143        1.74
-    ## 5 0.8035714        1.70
-    ## 6 0.6250000        2.10
+    ## 1 1.0000000        0.44
+    ## 2 0.1823899        3.04
+    ## 3 0.9748428        0.52
+    ## 4 0.9559748        0.58
+    ## 5 0.9496855        0.60
+    ## 6 0.1823899        3.04
 
 ``` r
 predicciones%>%

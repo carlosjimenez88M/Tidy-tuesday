@@ -80,7 +80,7 @@ hbcu_all%>%
 ```
 
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 hbcu_all%>%
   filter(year>=1990)%>%
   ggplot(aes(year,total_enrollment))+
@@ -92,7 +92,7 @@ hbcu_all%>%
 
 El comportamiento de los datos se ve estable, pero voy a mejorar esta métrica a través de un pivot a ver si así obtengo mayor información en los datos.
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 hbcu_all%>%
   select(year,males,females)%>%
   pivot_longer(!year,names_to = "gender",values_to = 'Total')%>%
@@ -110,7 +110,7 @@ Parece ser que se amplia la distancia entre hombres y mujeres de raza que estudi
 
 
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 hbcu_all%>%
   select(year,total_private,total_public)%>%
   pivot_longer(!year,names_to = 'Type',values_to = 'Total')%>%
@@ -129,7 +129,7 @@ hbcu_all%>%
 Las universidades públicas tienen la mayor tasa de inscripciones por año, más para poder entender mejor este hecho, es necesario evaluar las variaciones por año.
 
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 hbcu_all%>%
   select(year,total_private,total_public)%>%
   mutate(variation_private = total_private- lag(total_private),
@@ -211,7 +211,7 @@ hbcu_all_changes%>%
 
 El modelo autoregresivo es [1,0,0]
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 hbcu_all_changes%>%
   select(total_public_change)%>%
   ts() %>%
@@ -221,7 +221,7 @@ hbcu_all_changes%>%
 ```
 Basado en lo anterior la proyección sería la siguiente:
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 hbcu_all%>%
   select(total_public)%>%
   ts()%>%
@@ -256,7 +256,7 @@ shapiro.test(x = hbcu_all$total_public)
 Con la prueba shapiro se muestra que corresponde a una distribución normal, finalizo con unos ajustes del modelo para empezar a hallar los datos atípicos.
 
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 model<-hbcu_all%>%
   select(total_public)%>%
   ts()%>%
@@ -268,7 +268,7 @@ checkresiduals(model)
 
 Ahora que los datos si tienen sesgos se pueden hacer la siguiente evaluación **raíz unitaria**
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 autoplot(model)
 ```
 
@@ -312,7 +312,7 @@ predicciones <- as.data.frame(predicciones_h2o)
 head(predicciones)
 ```
 
-```{r,fig.height=8}
+```{r,fig.height=4}
 predicciones%>%
 ggplot(aes(x = mean_length)) +
   geom_histogram(color = "gray40") +
@@ -335,7 +335,7 @@ predicciones$anomaly = ifelse(predicciones$predict>cuantiles, 1, 0)
 
 
 
-```{r, fig.height=8}
+```{r, fig.height=4}
 datos <- hbcu_all %>%
   select(total_public)%>%
          bind_cols(predicciones)
