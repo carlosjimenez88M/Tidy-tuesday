@@ -1,0 +1,366 @@
+---
+title: "THE HBCU FUNDATION"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(widyr)
+library(janitor)
+library(tidytext)
+library(ggthemes)
+library(knitr)
+library(scales)
+theme_set(theme_wsj())
+library(modeldata)
+library(forecast)
+library(broom)
+library(AnomalyDetection)
+library(h2o) 
+library(solitude)
+library(isofor)
+```
+
+
+```{r}
+hbcu_all <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-02-02/hbcu_all.csv')
+
+```
+
+En este nuevo tidytuesday el reto esta en organizar y entender los datos matriculas universitarias (asistencia financiera) entre 1976 y 2015.
+
+## Análisis  Exploratorio de Datos
+
+Los datos vienen dados de la siguiente manera 
+
+```{r}
+hbcu_all%>%
+  head()%>%
+  kable(format = 'markdown')
+```
+Lo primero es organizar un poco los datos para poder entender a que procedimiento anexar a los datos
+
+```{r}
+hbcu_all<-hbcu_all%>%
+  arrange(Year)
+hbcu_all%>%
+  head()
+```
+Una vez ordenado los datos se estudia la distribución de los datos 
+
+
+```{r}
+hbcu_all%>%
+  clean_names()%>%
+  ggplot(aes(year,total_enrollment))+
+  geom_col()+
+  scale_y_continuous(labels = comma)
+```
+
+
+Parece que para estudiar mejor este tipo de distribución tocará truncar los datos (por el momento) en el rango 1990-2015, pero antes haré una pequeña limpieza en los nombres
+
+```{r}
+hbcu_all%>%
+  clean_names()%>%
+  names()->names_df
+names_df%>%
+  str_remove_all("x")->names_2
+
+names(hbcu_all)<-names_2
+hbcu_all%>%
+  head()%>%
+  kable(format = 'markdown')
+```
+
+
+```{r}
+hbcu_all%>%
+  filter(year>=1990)%>%
+  ggplot(aes(year,total_enrollment))+
+  geom_col()+
+  scale_y_continuous(labels = comma)+
+  labs(title = "Distribución de la matricula total",
+       subtitle = "Durante el periodo 2010-2021")
+```
+
+El comportamiento de los datos se ve estable, pero voy a mejorar esta métrica a través de un pivot a ver si así obtengo mayor información en los datos.
+
+```{r}
+hbcu_all%>%
+  select(year,males,females)%>%
+  pivot_longer(!year,names_to = "gender",values_to = 'Total')%>%
+  ggplot(aes(year,Total,color=gender))+
+  geom_line()+
+  scale_y_continuous(labels = comma)+
+  theme(legend.position="bottom",
+        legend.title   = element_text(size=5),
+        legend.text = element_text(size=5))+
+  labs(title = 'Relación de matriculas universitarias dado el genero',
+       subtitle = 'Periodo 1976-2015',
+       color = 'Gender:')
+```
+Parece ser que se amplia la distancia entre hombres y mujeres de raza que estudian se inscriben en la universidad, aunque la tendencia me da la impresión que nos podemos enfrentar a un caso de datos atípicos y para ello toca evaluar otros aspectos, lo primero será evaluar el número de estudiantes en universidades públicas versus las privadas.
+
+
+
+```{r}
+hbcu_all%>%
+  select(year,total_private,total_public)%>%
+  pivot_longer(!year,names_to = 'Type',values_to = 'Total')%>%
+  ggplot(aes(year,Total,color=Type))+
+  geom_line()+
+  scale_y_continuous(labels = comma)+
+  labs(title = "Relación de matricula entre universidades\n Públicas y Privadas",
+       subtitle = 'Periodo 1976-2015')+
+  theme(legend.position="bottom",
+        legend.title   = element_text(size=5),
+        legend.text = element_text(size=5))
+  
+  
+```
+
+Las universidades públicas tienen la mayor tasa de inscripciones por año, más para poder entender mejor este hecho, es necesario evaluar las variaciones por año.
+
+
+```{r}
+hbcu_all%>%
+  select(year,total_private,total_public)%>%
+  mutate(variation_private = total_private- lag(total_private),
+         variation_public = total_public - lag(total_public))%>%
+  select(-c(total_private,total_public))%>%
+  pivot_longer(!year,
+               names_to = 'Type',
+               values_to = 'Variation')%>%
+  ggplot(aes(year,Variation,fill=Variation>0))+
+  geom_col(show.legend = FALSE)+
+  scale_x_continuous(breaks = seq(1976,2015,3))+
+  facet_grid(~Type, scales='free')+
+  coord_flip()+
+  labs(title = "Variación de inscripciones por año",
+       subtitle = "Entre Universidades Privadas vs Públicas")
+```
+Es interesante ver la dinámica  de las contracciones entre pública y privada, pero si se observa detalladamente los positivos en ambos casos se contraen en los últimos años.
+
+Dada la dinámica sería interesante tratar este problema como una serie de tiempo, solo para entender un poco la naturaleza de los datos , trabajaré con el sector de la universidad pública.
+
+## Serie de tiempo - Universidad Pública
+
+```{r}
+hbcu_all%>%
+  select(year,total_public)%>%
+  ts()%>%
+  mstl()%>%
+  autoplot()+
+  theme_bw()
+```
+
+
+En efecto hay un comportamiento no estacionario en la tendencia, con lo que podría ser un ligero cambio estructural o tendencia débil
+
+
+
+
+```{r}
+hbcu_all%>%
+  select(total_public)%>%
+  ts()%>%
+  ggtsdisplay()
+```
+Esta gráfica me encanta, la función de autocorrelación (ACF) mide la correlación entre dos variables dado el tiempo, mientras que la función de autocorrelación mide la misma correlación entre dos variables pero separando la idea de dependencia dado los retardos de los datos. En el anterior gráfico podemos ver que continua dismuye en el ACF, lo que significa que no existe una asociacion lineal entre las observaciones separadas por mayores retrasos.
+
+Al diferenciar la serie se puede apreciar lo siguiente 
+
+```{r}
+hbcu_all%>%
+  select(total_public)%>%
+  ts()%>%
+  diff(lag=1)  %>% ggtsdisplay()
+```
+
+
+Para tratar bien estos datos, haré la diferencia de manera un poco más eficiente a nivel computacional 
+
+```{r}
+hbcu_all_changes<-hbcu_all%>%
+  select(total_public)%>%
+  mutate(total_public_change = total_public - lag(total_public))%>%
+  select(-total_public)
+
+hbcu_all_changes%>%
+  select(total_public_change)%>%
+  ts() %>%
+  mstl()%>%
+  autoplot()
+```
+Ahora si se puede evidenciar la tendencia débil a demás del comportamiento inexplicable de los datos, y didcho lo anterior, se puede ajustar el modelo arima
+
+
+```{r}
+hbcu_all_changes%>%
+  select(total_public_change)%>%
+  ts() %>%
+  auto.arima()
+```
+
+El modelo autoregresivo es [1,0,0]
+
+```{r}
+hbcu_all_changes%>%
+  select(total_public_change)%>%
+  ts() %>%
+  auto.arima()%>%
+  forecast(h=5)%>%
+  autoplot()
+```
+Basado en lo anterior la proyección sería la siguiente:
+
+```{r}
+hbcu_all%>%
+  select(total_public)%>%
+  ts()%>%
+  auto.arima()%>%
+  forecast(h=5)%>%
+  autoplot()
+```
+A la hora de ejecutar un modelo se puede apreciar lo siguiente 
+
+```{r}
+linear_model<-hbcu_all%>%
+  select(year,total_public)%>%
+  lm(year~.,data = .)
+
+augment(linear_model)%>%
+  ggplot(aes(x = year, y = .std.resid)) +
+  geom_point()
+```
+Es increible el comportamiento de los residuos, su geometría apoya la tesis de raíz unitaria y posible presencia de datos atípicos.
+
+Ahora solo para descartar cualquier sesgo haré una prueba de normalidad.
+
+```{r}
+qqnorm(hbcu_all$total_public)
+qqline(hbcu_all$total_public)
+```
+
+```{r}
+shapiro.test(x = hbcu_all$total_public)
+```
+
+Con la prueba shapiro se muestra que corresponde a una distribución normal, finalizo con unos ajustes del modelo para empezar a hallar los datos atípicos.
+
+
+```{r}
+model<-hbcu_all%>%
+  select(total_public)%>%
+  ts()%>%
+  diff()%>%
+  auto.arima()
+
+checkresiduals(model)
+```
+
+Ahora que los datos si tienen sesgos se pueden hacer la siguiente evaluación **raíz unitaria**
+
+```{r}
+autoplot(model)
+```
+
+El punto rojo fuera del circulo es la raíz compleja, e indica que el modelo es bueno para prónosticar.
+
+## Encontrando los datos atípicos
+
+Para encontrar lo datos atípicos trabajaré con un isolation forest. 
+
+```{r}
+h2o.init(ip = "localhost",
+         nthreads = -1,
+         max_mem_size = "4g")
+
+h2o.removeAll()
+h2o.no_progress()
+
+datos_h2o <- as.h2o(x = hbcu_all$total_public)
+```
+
+```{r}
+isoforest <- h2o.isolationForest(
+                model_id = "isoforest",
+                training_frame = datos_h2o,
+                x              = colnames(datos_h2o),
+                max_depth      = 50, 
+                ntrees         = 50, 
+                sample_rate    = 0.3 
+             )
+isoforest
+```
+
+Con el modelo listo, se generan las distancias de aislamiento proemdio
+
+```{r}
+predicciones_h2o <- h2o.predict(
+                      object  = isoforest,
+                      newdata = datos_h2o
+                    )
+predicciones <- as.data.frame(predicciones_h2o)
+head(predicciones)
+```
+
+```{r}
+predicciones%>%
+ggplot(aes(x = mean_length)) +
+  geom_histogram(color = "gray40") +
+  geom_vline(
+    xintercept = quantile(predicciones$mean_length, seq(0, 1, 0.1)),
+    color      = "red",
+    linetype   = "dashed") +
+  labs(
+    title = "Distribución de las distancias con el Isolation Forest")
+```
+Todo parece indicar que solo hay un dato atípico.
+
+```{r}
+
+cuantiles <- quantile(x = predicciones$mean_length, probs = seq(0, 1, 0.05))
+predicciones$anomaly = ifelse(predicciones$predict>cuantiles, 1, 0)
+
+```
+
+
+
+
+```{r}
+datos <- hbcu_all %>%
+  select(total_public)%>%
+         bind_cols(predicciones)
+datos%>%
+  ggplot(aes(x = anomaly, y = mean_length)) +
+  geom_jitter(aes(color = anomaly), width = 0.03, alpha = 0.3) + 
+  geom_violin(alpha = 0) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0) +
+  stat_summary(fun = "mean", colour = "orangered2", size = 3, geom = "point") +
+  labs(title = "Distancia  Isolation Forest",
+     x = "",
+     y = "Distancia promedio") +
+theme(legend.position = "none")
+```
+
+Encontramos lo que parecía un dato atípico! Pero no! su comportamiento esta dentro de lo normal.
+
+
+Bueno en este tidytuesday estudiamos:
+
+* como identificar la estacionalidad de una serie de tiempo, 
+* Identificar anomalías dentro de las series
+* Ajustar una base de datos para poder realizar con ello un postumo análisis.
+
+
+
+
+
