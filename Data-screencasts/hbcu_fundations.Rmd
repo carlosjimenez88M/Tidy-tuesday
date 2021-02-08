@@ -335,7 +335,7 @@ predicciones$anomaly = ifelse(predicciones$predict>cuantiles, 1, 0)
 
 
 
-```{r, fig.height=4}
+```{r}
 datos <- hbcu_all %>%
   select(total_public)%>%
          bind_cols(predicciones)
