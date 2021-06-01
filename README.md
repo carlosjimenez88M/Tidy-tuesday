@@ -19,7 +19,7 @@ In this space I working the tidytuesday, where I develop differents data science
 |[Beer Festival](https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-10-20/readme.md)|[Many Moldes and P-value](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Beer-Festival.md)|
 |[Kenya Census](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-01-19/readme.md)|[Census Visualization](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/kenya_Census.md)|
 |[HBCU](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-02-02/readme.md)|[Forecasting & Anomalies Detection](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/hbcu_fundations.md)|
-|[Netflix](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-04-20/readme.md)|[NLP and EDA](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-04-20/readme.md)|
+|[Netflix](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-04-20/readme.md)|[NLP and EDA](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Netflix.R)|
 
 
 
