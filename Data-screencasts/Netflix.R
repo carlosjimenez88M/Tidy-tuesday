@@ -30,8 +30,8 @@ netflix_titles%>%
   count(type, sort = T)%>%
   mutate(perc=round(n/sum(n),2)*100)
 
-# Percentaje Movies =70
-# Percentaje Tv Shows =30
+# Percentage Movies =70
+# Percentage Tv Shows =30
 # Non balanced Data
 
 netflix_titles%>%
