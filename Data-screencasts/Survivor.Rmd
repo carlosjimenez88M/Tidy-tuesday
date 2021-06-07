@@ -1,0 +1,289 @@
+---
+title: "Survivor"
+output: github_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(ggflags)
+library(ggrepel)
+library(modeltime)
+library(xgboost)
+library(tidymodels)
+library(timetk)
+library(plotly)
+library(modeltime.h2o)
+library(reticulate)
+interactive <- FALSE
+theme_set(theme_light())
+modeltime.gluonts::install_gluonts()
+```
+
+
+## Feature Engineering
+
+```{r}
+summary <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-01/summary.csv')%>%
+  separate(season_name,c('season_1','name'),sep = ': ',fill = 'left', extra = 'merge')%>%
+  select(-season_1)%>%
+  separate(location, c('location','other'),sep = ',', fill = 'left',extra = 'merge')%>%
+  select(-other)%>%
+  filter(!is.na(premiered),
+         !is.na(viewers_mean))
+```
+
+## Exploratory Data Analysis
+
+```{r}
+summary%>%
+  count(country, sort = T)%>%
+  mutate(country=fct_reorder(country,n))%>%
+  ggplot(aes(n,country))+
+  geom_errorbar(aes(xmin=0,xmax=n),width=0,linetype='dashed', col='gray')+
+  geom_point(aes(size=n,col=country), show.legend = F)+
+  scale_x_continuous(breaks = seq(1,10,by=1))+
+  labs(title = '# de veces que Survivor fue grabado en una misma locación',
+       x='# de veces en que fue grabado el programa',
+       y='')+
+  theme(plot.title = element_text(hjust=.5))
+  
+```
+
+
+```{r}
+summary%>%
+  na.omit()%>%
+  ggplot(aes(x=season,y=viewers_mean))+
+  geom_line()+
+  geom_hline(yintercept = mean(summary$viewers_mean,na.rm = T)) +
+  geom_smooth()+
+  geom_point(aes(color=country,size=viewers_mean), show.legend = F)+
+  geom_text(aes(label=country),
+                vjust=1,
+                hjust=1,
+                check_overlap = T,
+            size=2)+
+  expand_limits(y=0)+
+  geom_text(aes(x=25, label="\n Temporadas con más vistas", y= mean(summary$viewers_mean,na.rm = T)+2), text=element_text(size=6))+
+  labs(title = 'Relación de Vistas dadas las temporadas de Survivor',
+       y='Promedio de vistas',
+       x='Temporada')+
+  theme(plot.title = element_text(hjust=.5))
+
+
+
+```
+
+En el anterior gráfico se puede ver como es la variación de vistas al dada las temporadas. El comportamiento parece indicar una serie de tiempo
+
+## Forecast de Views 
+
+En esta oportunidad trabajaré con un modelo de Machine LEarning basado en ARIMA para calcular los pronósticos de Views
+
+```{r}
+summary%>%
+  plot_time_series(premiered,viewers_mean,.interactive = interactive)
+```
+
+```{r}
+summary%>%
+  select(premiered,viewers_mean)->data_forecast
+splits <- initial_time_split(data_forecast, prop = 0.9)
+```
+
+En esta oportunidad construiré un modelo de forecast con base a Machine Learning , dada una estructura [ARIMA](https://otexts.com/fpp2/arima.html)[^1]
+
+
+```{r}
+model_fit_arima_boosted <- arima_boost(
+    min_n = 2,
+    learn_rate = 0.010
+) %>%
+    set_engine(engine = "auto_arima_xgboost") %>%
+    fit(viewers_mean ~ premiered ,
+        data = training(splits))
+
+calibration_tbl <- model_fit_arima_boosted %>%
+    modeltime_calibrate(new_data = testing(splits))
+```
+
+
+[^1]: En este link encontrará toda la información necesaria sobre los modelos ARIMA 
+
+
+```{r}
+calibration_tbl %>%
+    modeltime_forecast(
+        new_data    = testing(splits),
+        actual_data = data_forecast
+    ) %>%
+    plot_modeltime_forecast(
+      .legend_max_width = 25, # For mobile screens
+      .interactive      = interactive
+    )
+```
+Parece ser que el Arima esta un poco sesgado, intentaré con varios modelos 
+
+
+
+```{r}
+model_fit_arima_no_boost <- arima_reg() %>%
+    set_engine(engine = "auto_arima") %>%
+    fit(viewers_mean ~ premiered, data = training(splits))
+
+model_fit_ets <- exp_smoothing() %>%
+    set_engine(engine = "ets") %>%
+    fit(viewers_mean ~ premiered, data = training(splits))
+
+model_fit_prophet <- prophet_reg() %>%
+    set_engine(engine = "prophet") %>%
+    fit(viewers_mean ~ premiered, data = training(splits))
+
+model_fit_lm <- linear_reg() %>%
+    set_engine("lm") %>%
+    fit(viewers_mean ~ premiered, data = training(splits))
+
+models_tbl <- modeltime_table(
+    model_fit_arima_no_boost,
+    model_fit_arima_boosted,
+    model_fit_ets,
+    model_fit_prophet,
+    model_fit_lm
+)
+
+calibration_tbl <- models_tbl %>%
+    modeltime_calibrate(new_data = testing(splits))
+
+calibration_tbl %>%
+    modeltime_forecast(
+        new_data    = testing(splits),
+        actual_data = data_forecast
+    ) %>%
+    plot_modeltime_forecast(
+      .legend_max_width = 25,
+      .interactive      = interactive
+    )
+
+```
+
+
+Ahora se validan las mejores métricas
+
+
+```{r}
+calibration_tbl %>%
+    modeltime_accuracy() %>%
+    table_modeltime_accuracy(
+        .interactive = interactive
+    )
+```
+
+El modelo ETS parece ser el mejor, y el PROPHET tiene algo de over-fitting
+
+
+
+```{r}
+refit<- calibration_tbl %>%
+    modeltime_refit(data = data_forecast)
+
+refit %>%
+    modeltime_forecast(h = "1 years", actual_data = data_forecast) %>%
+    plot_modeltime_forecast(
+      .legend_max_width = 25, 
+      .interactive      = interactive
+    )
+```
+
+```{r}
+calibration_tbl %>%
+  modeltime_accuracy() %>%
+  table_modeltime_accuracy(.interactive = FALSE)
+```
+
+
+## Calibrando el modelo
+
+```{r}
+ggplotly(calibration_tbl%>%
+  filter(.model_id==3)%>%
+  modeltime_refit(data_forecast) %>%
+  modeltime_forecast(h = "12 months", actual_data = data_forecast) %>%
+  plot_modeltime_forecast(.interactive = FALSE))
+```
+
+
+## Aplicando H2o
+
+
+```{r}
+#devtools::install_github("business-science/modeltime.h2o")
+library(tidymodels)
+library(modeltime.h2o)
+library(tidyverse)
+library(timetk)
+data_tbl <- summary %>%
+    select(season, premiered, viewers_mean)
+
+splits <- time_series_split(data_tbl, assess = "1 years", cumulative = TRUE)
+
+recipe_spec <- recipe(viewers_mean ~ ., data = training(splits)) %>%
+    step_timeseries_signature(premiered) 
+
+train_tbl <- training(splits) %>% bake(prep(recipe_spec), .)
+test_tbl  <- testing(splits) %>% bake(prep(recipe_spec), .)
+h2o.init(
+    nthreads = -1,
+    ip       = 'localhost',
+    port     = 54321
+)
+
+set.seed(123)
+model_spec <- automl_reg(mode = 'regression') %>%
+    set_engine(
+         engine                     = 'h2o',
+         max_runtime_secs           = 5, 
+         max_runtime_secs_per_model = 3,
+         max_models                 = 3,
+         nfolds                     = 2,
+         exclude_algos              = c("DeepLearning"),
+         verbosity                  = NULL,
+         seed                       = 786
+    ) 
+
+model_fitted <- model_spec %>%
+    fit(viewers_mean ~ ., data = train_tbl)
+model_fitted
+
+automl_update_model(model_fitted, model_id = "StackedEnsemble_AllModels_AutoML_20210606_234549")
+```
+
+```{r}
+predict(model_fitted, test_tbl)
+```
+
+```{r}
+modeltime_tbl <- modeltime_table(
+    model_fitted
+) 
+library(plotly)
+ggplotly(modeltime_tbl %>%
+  modeltime_calibrate(test_tbl) %>%
+    modeltime_forecast(
+        new_data    = test_tbl,
+        actual_data = data_tbl,
+        keep_data   = TRUE
+    ) %>%
+    plot_modeltime_forecast(
+        .facet_ncol = 2, 
+        .interactive = FALSE
+    ))
+
+```
+
