@@ -1,0 +1,164 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE,message = FALSE)
+```
+
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(DataExplorer)
+library(skimr)
+```
+
+
+
+```{r}
+parks <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-22/parks.csv')
+parks
+```
+
+## Sort EDA 
+
+
+```{r}
+parks%>%
+  plot_str()
+```
+
+```{r}
+parks%>%
+  skim()
+```
+
+
+```{r}
+plot_histogram(parks)
+
+```
+
+
+```{r}
+plot_qq(parks$med_park_size_data, sampled_rows = 1000L)
+
+```
+
+
+```{r}
+data_set<-parks[,c('city','spend_per_resident_points')]
+plot_qq(data_set, sampled_rows = 1000L)
+```
+
+
+```{r}
+plot_correlation(na.omit(parks), maxcat = 5L)
+parks%>%
+  select(c(city,med_park_size_data:amenities_points))%>%
+  na.omit()%>%
+  plot_correlation()
+  
+```
+
+
+### Model 
+
+
+```{r}
+data_model<-parks%>%
+  select(city,med_park_size_data,med_park_size_points,spend_per_resident_points,basketball_data,dogpark_data)%>%
+  na.omit()
+```
+
+
+
+```{r}
+set.seed(123)
+parks_split <- data_model %>%
+  mutate_if(is.character, factor) %>%
+  initial_split(strata = city)
+
+parks_train <- training(parks_split)
+parks_test <- testing(parks_split)
+
+set.seed(234)
+parks_folds <- bootstraps(parks_train, strata = city)
+
+```
+
+
+
+```{r}
+tree_spec <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune()
+) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_grid <- grid_regular(cost_complexity(), tree_depth(), levels = 7)
+
+parks_wf <- workflow() %>%
+  add_model(tree_spec) %>%
+  add_formula(city ~ .)
+
+parks_wf
+```
+```{r}
+doParallel::registerDoParallel()
+
+tree_res <- tune_grid(
+  parks_wf,
+  resamples = parks_folds,
+  grid = tree_grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+tree_res
+```
+
+
+```{r}
+collect_metrics(tree_res)
+```
+
+```{r}
+show_best(tree_res, metric = "accuracy")
+```
+
+
+```{r}
+collect_predictions(tree_res) %>%
+  group_by(id) %>%
+  roc_curve(city, .pred_No) %>%
+  autoplot() +
+  theme(legend.position = "none")
+```
+## Other model 
+
+```{r}
+usemodels::use_ranger(city~.,data = parks_train)
+ranger_recipe <- 
+  recipe(formula = city ~ ., data = parks_train) 
+
+ranger_spec <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_mode("classification") %>% 
+  set_engine("ranger") 
+
+ranger_workflow <- 
+  workflow() %>% 
+  add_recipe(ranger_recipe) %>% 
+  add_model(ranger_spec) 
+
+set.seed(89029)
+ranger_tune <-
+  tune_grid(ranger_workflow, resamples =parks_folds , grid = 4)
+ranger_tune%>%
+  unnest(.notes)
+```
+
