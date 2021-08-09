@@ -1,0 +1,199 @@
+---
+title: "Paralympic Games"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+library(tidyverse)
+library(tidymodels)
+library(tidymetrics)
+library(DataExplorer)
+library(countrycode)
+library(widyr)
+library(tidytext)
+theme_set(theme_classic())
+```
+
+```{r}
+tuesdata <- tidytuesdayR::tt_load('2021-08-03')
+tuesdata <- tidytuesdayR::tt_load(2021, week = 32)
+
+athletes <- tuesdata$athletes
+```
+
+
+### EDA 
+
+```{r}
+missing_values<-DataExplorer::plot_missing(athletes)+
+  labs(title = 'Percentage Missing Values')+
+  theme_classic()
+
+missing_values
+```
+
+
+```{r}
+athletes<-athletes%>%
+  select(-c(grp_id,guide))%>%
+  filter(!is.na(gender))
+
+athletes
+```
+
+
+
+```{r}
+athletes%>%
+  group_by(gender = factor(gender),
+           decade = (year %/%10)*10)%>%
+  count(sort =  TRUE)%>%
+  arrange(decade)%>%
+  mutate(decade = as.factor(decade))%>%
+  ggplot(aes(n,decade,fill =  gender))+
+  geom_col(alpha = .8)+
+  labs(title = 'Relation Gender per Decade',
+       y = '',
+       x = 'Total Prayers ')
+
+  
+```
+
+
+```{r,warning=FALSE, message=FALSE}
+# feature engineering 
+athletes<-athletes %>% 
+  filter(!is.na(abb),
+         abb !='-')%>%
+  mutate(decade = (year %/%10) * 10)%>%
+  mutate(country = countrycode(abb, origin= 'ioc', destination = 'country.name'),
+         country = ifelse(abb=='FRG','West Germany',country),
+         country = ifelse(abb=='URS','Soviet Union',country),
+         country = ifelse(abb=='SCG','Serbia and Montenegro',country),
+         country = ifelse(abb=='FRO','Faroe Islands',country),
+         country = ifelse(abb=='YUG','Yugoslavia',country),
+         country = ifelse(abb=='EUN','Unified Team',country),
+         country = ifelse(abb=='BIR','Burma',country),
+         country = ifelse(abb=='GDR','East Germany',country),
+         country = ifelse(abb=='TCH','Czechoslovakia',country),
+         country = ifelse(abb=='FRG','West Germany',country),
+         country = ifelse(abb=='IPP','Independent Paralympic Participants',country)
+         )
+```
+
+
+
+```{r}
+athletes_summary<-athletes%>%
+  group_by(country = factor(country), year,gender)%>%
+  summarize(n = n())%>%
+  group_by(year,gender)%>%
+  mutate(total_medals = sum(n),
+            medals_share = 100* n/total_medals)%>%
+  ungroup()
+#country_focus<-
+country_focus<-athletes_summary%>%
+  filter(year == max(year))%>%
+  group_by(country,year)%>%
+  summarize(total = sum(n))%>%
+  arrange(desc(total))%>%
+  ungroup()%>%
+  head(10)%>%
+  select(country)
+  
+
+athletes_summary%>%
+  filter(country %in% country_focus$country)%>%
+  mutate(gender =  factor(gender),
+         year = factor(year))%>%
+  ggplot(aes(n,year, fill = gender))+
+  geom_col()+
+  facet_wrap(~country, scales = 'free')+
+  labs(title = 'Relation between # of prayers And Country (top 10)',
+       subtitle = 'By gender',
+       y = 'Year',
+       x = '# of Prayers')
+```
+
+
+```{r}
+athletes%>%
+  filter(country %in% country_focus$country)%>%
+  group_by(country,medal)%>%
+  count(sort=T)%>%
+  ungroup()%>%
+  mutate(medal = factor(medal),
+         country = reorder_within(country,n,medal))%>%
+  ggplot(aes(n,country, fill = medal))+
+  geom_col(show.legend = FALSE)+
+  scale_y_reordered()+
+  facet_wrap(~medal, scales = 'free')
+  
+```
+
+
+```{r}
+athletes%>%
+  filter(country %in% country_focus$country)%>%
+  group_by(country,medal,)%>%
+  count(sort=T)%>%
+  ungroup()%>%
+  mutate(medal = factor(medal),
+         country = reorder_within(country,n,medal))%>%
+  ggplot(aes(n,country, fill = medal))+
+  geom_col(show.legend = FALSE)+
+  scale_y_reordered()+
+  facet_wrap(~medal, scales = 'free')
+```
+```{r, warning=FALSE, message=FALSE}
+library(ggflags)
+library(forcats)
+library(png)
+library(cowplot)
+
+iso_want<-athletes%>%
+  mutate(iso=countrycode(abb, 'iso3c', 'country.name'))%>%
+   mutate(continent=countrycode(abb, 'iso3c', 'continent'))%>%
+  filter(!is.na(abb))%>%
+  filter(!is.na(iso))%>%
+  select(year,medal,iso)%>%
+  group_by(iso)%>%
+  summarise(total_medals=n())%>%
+  arrange(-total_medals)%>%
+  slice(1:10)%>%
+  mutate(rank=row_number(),
+         iso = fct_reorder(iso, rank))%>%
+  ungroup()%>%
+  select(iso,rank)
+
+
+
+athletes%>%
+  left_join(iso_want,by=c("country"="iso"))%>%
+  filter(!is.na(rank))%>%
+  mutate(country = fct_reorder(country, rank),
+         medal = factor(medal, levels = c("Gold","Silver","Bronze")))%>%
+  select(gender,year,medal,country)%>%
+  group_by(gender,year,medal,country)%>%
+  summarise(number_of_medals=n())%>%
+  ggplot()+
+  geom_bar(aes(x=year,y=number_of_medals,fill=medal),position="stack", stat="identity")+
+  facet_wrap(~country)+
+  scale_x_continuous(breaks = athletes %>%filter(year %% 8 == 0)%>%pull(year)%>%unique()) +
+  scale_y_continuous(name = "# of medals won") +
+  scale_fill_manual(values=c("Gold"="#D4AF37","Silver"="#C0C0C0","Bronze"="#CD7F32"))+
+  xlab("")+
+  ylab("# of medals")+
+  labs(title = 'The countries with the most number of medals')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+  
+
+```
+
