@@ -21,6 +21,6 @@ In this space I working the tidytuesday, where I develop differents data science
 |[HBCU](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-02-02/readme.md)|[Forecasting & Anomalies Detection](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/hbcu_fundations.md)|
 |[Netflix](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-04-20/readme.md)|[NLP and EDA](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Netflix.R)|
 |[Survivor](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-06-01/readme.md)|[Forescasting with Deep learning and Machine Learning](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Survivor.Rmd)|
-
+|[Olympics](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-07-27/readme.md)|[Statistical Inference Performance](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Olympics.R)|
 
 
