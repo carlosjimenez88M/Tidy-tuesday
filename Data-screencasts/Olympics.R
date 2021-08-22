@@ -367,4 +367,4 @@ null_f_distn_theoretical <- data %>%
 visualize(null_f_distn_theoretical, method = "theoretical") +
 shade_p_value(obs_stat = F_hat, direction = "greater")
 
-# reject Null Hypothesis : Age have effects sport selections
+# reject Null Hypothesis : Age has effects in sport selections
