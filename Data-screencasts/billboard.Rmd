@@ -1,0 +1,164 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(tidytext)
+library(lubridate)
+theme_set(theme_classic())
+
+## Data ---
+billboard <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-09-14/billboard.csv')
+
+```
+
+
+
+## Feature Engineering
+
+
+```{r}
+billboard<-billboard%>%
+  mutate(week_id=mdy(week_id),
+         performer= factor(performer))
+
+billboard %>%
+  ggplot(aes(week_id))+
+  geom_histogram()+
+  facet_wrap(~instance,scales = 'free')
+```
+
+
+
+```{r}
+billboard%>%
+    mutate(performer=str_remove(performer,'(?<=[\\s])\\s*|^\\s+|\\s+$'),
+           performer=str_remove(performer,'[[:punct:]]'))%>%
+  group_by(performer,week_position)%>%
+  count(sort = TRUE)
+```
+
+```{r}
+## Clean performer names
+billboard<-billboard%>%
+    mutate(performer=str_remove(performer,'(?<=[\\s])\\s*|^\\s+|\\s+$'),
+           performer=str_remove(performer,'[[:punct:]]'))
+```
+
+```{r}
+billboard<-billboard%>%
+    mutate(Decade= (year(week_id) %/%10)*10)
+```
+
+
+## A Little EDA
+
+```{r}
+billboard%>%
+  filter(week_position==1)%>%
+  group_by(performer,song)%>%
+  count(sort=T)
+
+```
+```{r}
+billboard%>%
+  filter(song=='Despacito')%>%
+  ggplot(aes(week_id,week_position))+
+  geom_line()+
+  scale_y_reverse()
+```
+
+
+```{r,fig.height=8}
+top<-billboard%>%
+  filter(week_position==1)%>%
+  group_by(performer,song,song_id)%>%
+  count(sort=T)
+
+billboard%>%
+  semi_join(head(top,10),
+            by='song_id')%>%
+  ggplot(aes(week_id,week_position,group = instance,color=song))+
+  geom_line(show.legend = FALSE)+
+  scale_y_reverse()+
+  facet_wrap(~song,scales = 'free')+
+  labs(x = 'Time',
+       y = 'Billboard position')
+```
+
+## The most #1 Artist
+
+```{r}
+top5_performer<-billboard%>%
+  group_by(performer)%>%
+  summarize(total_weeks = n(),
+            total_weks_n_1 =  sum(week_position==1),
+            n_songs = n_distinct(song))%>%
+  filter(total_weks_n_1>0)%>%
+  arrange(desc(total_weks_n_1))%>%
+  select(performer)%>%
+  head(5)
+```
+
+
+```{r,fig.height=8,fig.width=16}
+billboard%>%
+  filter(performer %in% top5_performer$performer) %>%
+  #filter(performer=='Adele')%>%
+  group_by(performer,song)%>%
+  summarize(total_weks_n_1 =  sum(week_position==1))%>%
+  group_by(performer)%>%
+  mutate(pct = round(total_weks_n_1/sum(total_weks_n_1)*100,2))%>%
+  filter(total_weks_n_1>0) %>%
+  mutate(song=reorder_within(song,pct,performer))%>%
+  ggplot(aes(total_weks_n_1,song,fill=pct))+
+  geom_tile()+
+  scale_y_reordered()+
+  scale_fill_gradient2(low = 'pink',high = 'red')+
+  geom_text(aes(label=paste0(pct,'%')))+
+  labs(title = 'heatmap #1 song by top 5 Artist',
+       x = 'weeks in #1',
+       y = '') +
+  facet_wrap(~performer,scales = 'free')
+  
+  
+```
+
+
+```{r}
+by_performer<-billboard%>%
+  group_by(performer)%>%
+  summarize(total_weeks = n(),
+            total_weeks_n_1 = sum(week_position==1),
+            n_songs_on_top = n_distinct(song),
+            n_songs_on_n_1 = n_distinct(song[week_position==1]))%>%
+  arrange(desc(n_songs_on_n_1))%>%
+  filter(total_weeks_n_1>0)
+
+by_performer%>%
+  arrange(desc(n_songs_on_top))%>%
+  head(30) %>%
+  mutate(performer=fct_reorder(performer,n_songs_on_top)) %>%
+  ggplot(aes(n_songs_on_top,performer))+
+  geom_col()
+  
+```
+
+```{r}
+billboard%>%
+  mutate(performer_lump = fct_lump(performer,10),
+         year = year(week_id))%>%
+  filter(performer_lump!='Other')%>%
+  count(performer_lump,
+        year) %>%
+  ggplot(aes(year,n,fill=performer_lump))+
+  geom_area()
+```
+
