@@ -23,4 +23,8 @@ In this space I working the tidytuesday, where I develop differents data science
 |[Survivor](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-06-01/readme.md)|[Forescasting with Deep learning and Machine Learning](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Survivor.Rmd)|
 |[Olympics](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-07-27/readme.md)|[Statistical Inference Performance, Predict Models and Experimental Design](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Olympics.R)|
 |[billboard](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-09-14/readme.md)|[EDA](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/billboard.Rmd)|
-|[Art Collection](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-09-14/readme.md)|[heteroscedastic supervition](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Art-Collection.md)
+|[Art Collection](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-09-14/readme.md)|[heteroscedastic supervition](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/Art-Collection.md)|
+|[Pumpkins](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-10-19/readme.md)|[Dimensionality Reduction and clustering](https://github.com/carlosjimenez88M/Tidy-tuesday/blob/master/Data-screencasts/pumpkins.md)
+
+
+
