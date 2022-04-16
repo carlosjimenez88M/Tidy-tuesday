@@ -1,6 +1,6 @@
 ---
-title: "Collegiate sports "
-output: github_document
+title: "Reduction Dimensionality Sports"
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
