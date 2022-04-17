@@ -15,6 +15,7 @@ library(tidymodels)
 library(tidytext)
 library(scales)
 library(tidylo)
+library(hardhat)
 library(themis)
 library(textrecipes)
 theme_set(theme_bw())
@@ -211,8 +212,6 @@ publications %>%
   geom_area()+
   scale_y_continuous(labels = percent) +
   facet_wrap(~country, scales = 'free_x')
-
-  
 ```
 
 ```{r}
@@ -243,6 +242,27 @@ publications%>%
 ```
 
 
+```{r}
+publications %>%
+  group_by(distribution) %>%
+  count(sort=TRUE)%>%
+  ungroup() %>%
+  mutate(distribution=fct_reorder(distribution,n),
+         intercept_med_std=median(n) ) %>%
+  ggplot(aes(n,distribution, color=n>15))+
+  geom_vline(xintercept = 15, linetype='dashed')+
+  geom_point(aes(size=n), show.legend = FALSE)
+```
+
+
+```{r}
+distribution_class <- publications %>%
+    group_by(distribution) %>%
+    count(sort=TRUE)%>%
+    head(2) %>%
+    select(distribution) %>%
+    pull()
+```
 
 
 ### Modelling 
@@ -250,8 +270,10 @@ publications%>%
 Modelling distribution 
 
 ```{r, fig.height=5}
+
 topics_log_odds <-
   publications %>%
+  filter(distribution %in% c("Website","Social media", "Email"  )) %>%
   group_by(topics) %>%
   unnest_tokens(word, summary) %>%
   count(topics, word, sort = TRUE) %>%
@@ -277,110 +299,121 @@ topics_log_odds %>%
 
 
 ```{r}
+distribution_log_odds <-
+  publications %>%
+  filter(distribution %in% c("Website","Social media" )) %>%
+  group_by(distribution) %>%
+  unnest_tokens(word, summary) %>%
+  count(distribution, word, sort = TRUE) %>%
+  filter(!word %in% tm::stopwords(),
+         !str_detect(word,'[0-9]'),
+         !word %in% c('news','benito','sanm','it’s','daily')) %>%
+  bind_log_odds(distribution, word, n)
+
+distribution_log_odds %>%
+  group_by(distribution) %>%
+  slice_max(log_odds_weighted, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(log_odds_weighted,
+    reorder_within(word, log_odds_weighted,distribution),
+    fill = distribution
+  )) +
+  scale_y_reordered()+
+  geom_col(show.legend = FALSE) +
+  facet_wrap(vars(distribution), scales = "free") 
+```
+
+
+
+```{r}
 set.seed(1234)
 
-multicomplaints_split <- initial_split(publications%>%
-                                         select(distribution,year_founded,topics,summary), strata = distribution)
+topics_filters<-publications %>%
+  group_by(topics) %>%
+  count(sort = T) %>%
+  filter(n>=8)
+  
 
-multicomplaints_train <- training(multicomplaints_split)
-multicomplaints_test <- testing(multicomplaints_split)
+publication_data_model<-publications%>%
+  filter(distribution %in% distribution_class,
+         topics %in% topics_filters$topics)%>%
+  ungroup() %>%
+  select(distribution,summary,topics)
+
+publications_split <- initial_split(publication_data_model,strata = distribution)
+
+publication_train <- publications_split %>%
+  training()
+publication_test <- publications_split %>%
+  testing()
+
+set.seed(345)
+distributions_folds <- vfold_cv(publication_train, strata = distribution,v = 20)
+
+```
 
 
-library(hardhat)
-sparse_bp <- default_recipe_blueprint(composition = "dgCMatrix")
-
-library(themis)
-
-multicomplaints_rec <-
-  recipe(distribution ~ summary+topics,
-         data = multicomplaints_train) %>%
-  step_unknown(topics) %>%
-  step_dummy(topics)%>%
+```{r}
+set.seed(1234)
+library(textfeatures)
+publications_rec <-
+  recipe(distribution ~  . , data = publication_train) %>%
+  step_textfeature(topics) %>%
   step_tokenize(summary) %>%
-  step_tokenfilter(summary, max_tokens = 20) %>%
-  step_tfidf(summary) %>%
-  step_downsample(distribution)
-multicomplaints_folds <- vfold_cv(multicomplaints_train)
-multi_spec <- multinom_reg(penalty = tune(), mixture = 1) %>%
-  set_mode("classification") %>%
-  set_engine("glmnet")
-
-multi_lasso_wf <- workflow() %>%
-  add_recipe(multicomplaints_rec, blueprint = sparse_bp) %>%
-  add_model(multi_spec)
-
-smaller_lambda <- grid_regular(penalty(range = c(-5, 0)), levels = 20)
-multi_lasso_rs <- tune_grid(
-  multi_lasso_wf,
-  multicomplaints_folds,
-  grid = smaller_lambda,
-  control = control_resamples(save_pred = TRUE)
-)
-
-multi_lasso_rs
-```
-
-
-
-```{r}
-best_acc <- multi_lasso_rs %>%
-  show_best("accuracy")
-
-best_acc
-```
-
-
-
-```{r}
-set.seed(123)
-distribution_split <- initial_split(publications%>%mutate(topics=factor(topics))%>%
-                                      select(year_founded,distribution,summary,topics), strata = distribution ) 
-distribution_train <- training(distribution_split)
-distribution_test <- testing(distribution_split)
-
-
-
-set.seed(234)
-distributions_folds <- vfold_cv(distribution_train, strata = distribution)
-
-
-```
-
-
-
-
-
-```{r}
-distribution_recipe<-recipe(distribution ~ year_founded+summary, data = distribution_train) %>%
-  step_tokenize(summary) %>%
-  step_tokenfilter(summary, max_tokens = 200) %>%
-  step_tfidf(summary) 
-
-distribution_recipe %>%
-  prep() %>%
-  juice()
-```
-
-
-```{r}
+  step_stopwords(summary) %>%
+  step_tokenfilter(summary, max_tokens =200) %>%
+  step_tfidf(summary)%>%
+  step_upsample(distribution)
+  #step_downsample(distribution) 
+  
 multi_spec <-
   multinom_reg(penalty = tune(), mixture = 1) %>%
   set_mode("classification") %>%
   set_engine("glmnet")
 
-nber_wf <- workflow(distribution_recipe, multi_spec)
+publication_wf <- workflow(publications_rec, multi_spec)
 
-nber_grid <- grid_regular(penalty(range = c(-5, 0)), levels = 10)
+publication_grid <- grid_regular(penalty(range = c(-25, 0)), levels = 90)
 
 doParallel::registerDoParallel()
 set.seed(2022)
-nber_rs <-
+publication_rs <-
   tune_grid(
-    nber_wf,
+    publication_wf,
     distributions_folds,
-    grid = nber_grid
-  )
+    grid = publication_grid)
 
-nber_rs%>%unnest(.notes)
+autoplot(publication_rs)
 ```
+
+
+
+```{r}
+show_best(publication_rs)
+```
+
+```{r}
+final_penalty <-publication_rs %>%
+  select_by_one_std_err(metric = "roc_auc", desc(penalty))
+```
+
+
+
+```{r}
+distribution_final <-  publication_wf%>%
+  finalize_workflow(final_penalty) %>%
+  last_fit(publications_split)
+
+
+collect_metrics(distribution_final)
+
+```
+
+
+```{r}
+collect_predictions(distribution_final) %>%
+  conf_mat(distribution, .pred_class) %>%
+  autoplot()
+```
+
 
