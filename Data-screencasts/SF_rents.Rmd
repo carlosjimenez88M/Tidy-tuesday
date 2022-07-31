@@ -1,0 +1,323 @@
+---
+title: "SF Rents"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, echo = FALSE, cache = FALSE, message = FALSE,warning = FALSE)
+```
+
+## EDA 
+
+```{r}
+library(tidyverse)
+library(scales)
+library(lubridate)
+library(tidytext)
+library(ggthemes)
+library(ggrepel)
+theme_set(theme_classic())
+```
+
+
+```{r}
+
+rent <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-05/rent.csv') %>%
+  mutate(date=ymd(date))
+permits <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-05/sf_permits.csv') %>%
+  mutate(permit_creation_date=ymd(permit_creation_date),
+         first_construction_document_date=ymd(first_construction_document_date),
+         permit_expiration_date=ymd(permit_expiration_date))
+new_construction <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-05/new_construction.csv')
+```
+
+```{r}
+city_filter<-rent %>%
+  filter(year==max(year))%>%
+  select(city) %>%
+  distinct()
+
+rents_filter <- rent %>%
+  filter(city %in% city_filter$city)
+
+
+rents_filter %>%
+  group_by(city,year) %>%
+  summarize(n=n(),
+            avg_price = mean(price),
+            p25=quantile(price)[2],
+            p75=quantile(price)[4]) %>%
+  #filter(n<=1000) %>%
+  #arrange(desc(n))
+  ggplot(aes(n))+
+  geom_histogram()+
+  scale_x_log10()+
+  labs(title = "Log Distribution House's Frequencies",
+       x = '# of elements (log Scale)')
+```
+
+
+
+```{r, fig.height=4}
+rents_filter %>%
+  group_by(city) %>%
+  summarize(n=n(),
+            avg_price = mean(price),
+            p25=quantile(price)[2],
+            p75=quantile(price)[4]) %>%
+  filter(n>100) %>%
+  mutate(city=fct_reorder(city,avg_price,sum)) %>%
+  ggplot(aes(avg_price,city))+
+  geom_errorbar(aes(xmin=p25,xmax=p75))+
+  geom_point(aes(size=n))
+  #arrange(desc(n))
+ 
+```
+
+
+
+```{r, fig.height=4}
+rents_filter %>%
+  filter(year>=2010,
+         city %in% c('san francisco','san jose', 'oakland')) %>%
+  group_by(city,year) %>%
+  summarize(n=n(),
+            avg_price = mean(price),
+            p25=quantile(price)[2],
+            p75=quantile(price)[4]) %>%
+  filter(n>100) %>%
+  ungroup() %>%
+  mutate(city=reorder_within(city,avg_price,year)) %>%
+  ggplot(aes(avg_price,city, color=factor(year)))+
+  geom_errorbar(aes(xmin=p25,xmax=p75))+
+  geom_point(aes(size=n), show.legend = FALSE)+
+  scale_y_reordered()+
+  facet_wrap(~year, scales = 'free')+
+  guides(color='none')
+```
+
+
+```{r}
+data_model <- rents_filter %>%
+  #filter(city %in% c('san francisco','san jose', 'oakland')) %>%
+  filter(!is.na(beds),
+         !is.na(baths),
+         !is.na(sqft),
+         !is.na(lat),
+         !is.na(lon))
+
+ 
+```
+
+
+## Desing model 
+
+
+```{r}
+data_model %>%
+  filter(year %in% c(2013,2015,2015,2017)) %>%
+  ggplot(aes(lon,lat, color=city))+
+  geom_point(aes(size=price))+
+  guides(color='none')+
+  facet_wrap(~year, scales = 'free')
+  
+```
+
+
+```{r}
+data_model <- data_model %>%
+  filter(year %in% c(2013,2015,2015,2017)) 
+
+data_model %>%
+  group_by(city,lon,lat) %>%
+  summarize(avg_price = mean(price)) %>%
+  ggplot(aes(lon,lat,z=avg_price))+
+  stat_summary_hex(alpha=0.7, bins = 30)+
+  scale_fill_viridis_c() 
+```
+
+
+```{r}
+library(patchwork)
+
+plot_sf <- function(var, title) {
+  data_model %>%
+    ggplot(aes(lon, lat, z = {{ var }})) +
+    stat_summary_hex(alpha = 0.8, bins = 50) +
+    scale_fill_viridis_c() +
+    labs(
+      fill = "mean",
+      title = title
+    )
+}
+
+plot_sf(beds, "Bed")+
+  plot_sf(beds, "baths")+
+  plot_sf(beds, "sqft")
+  
+```
+
+
+
+```{r}
+
+model_data<-data_model %>%
+  filter(!is.na(title),
+         !is.na(descr))
+
+sf_tidy <-
+  model_data %>%
+  unnest_tokens(word, descr) %>%
+  anti_join(get_stopwords())
+
+
+top_words <-
+  sf_tidy %>%
+  count(word, sort = TRUE) %>%
+  filter(!word %in% as.character(1:5)) %>%
+  slice_max(n, n = 100) %>%
+  pull(word)
+
+
+word_freqs <-
+  sf_tidy %>%
+  filter(!str_detect(word,'[0-9]+'),
+         !word %in% c('â','w','us','call'))%>%
+  count(word, price) %>%
+  filter(n>10) %>%
+  complete(word, price, fill = list(n = 0)) %>%
+  filter(n>1) %>%
+  group_by(price) %>%
+  mutate(
+    price_total = sum(price),
+    proportion = n / price_total
+  ) %>%
+  ungroup() %>%
+  filter(word %in% top_words)
+
+
+word_mods <-
+  word_freqs %>%
+  nest(data = c(price, n, price_total, proportion)) %>%
+  mutate(
+    model = map(data, ~ glm(cbind(n, price_total) ~ price, ., family = "binomial")),
+    model = map(model, tidy)
+  ) %>%
+  unnest(model) %>%
+  filter(term == "price") %>%
+  mutate(p.value = p.adjust(p.value)) %>%
+  arrange(-estimate)
+
+word_mods %>%
+  ggplot(aes(estimate, p.value)) +
+  geom_vline(xintercept = 0, lty = 2, alpha = 0.7, color = "gray50") +
+  geom_point(color = "midnightblue", alpha = 0.8, size = 2.5) +
+  scale_y_log10() +
+  geom_text_repel(aes(label = word))
+```
+
+```{r}
+higher_words <-
+  word_mods %>%
+  filter(p.value < 0.05) %>%
+  slice_max(estimate, n = 12) %>%
+  pull(word)
+
+lower_words <-
+  word_mods %>%
+  filter(p.value < 0.05) %>%
+  slice_max(-estimate, n = 12) %>%
+  pull(word)
+```
+
+```{r}
+word_freqs %>%
+  filter(word %in% lower_words) %>%
+  ggplot(aes(price, proportion, color = word)) +
+  geom_line(size = 2.5, alpha = 0.7, show.legend = FALSE) +
+  facet_wrap(vars(word), scales = "free_y") +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, NA)) +
+  labs(x = NULL, y = "proportion of total words used for homes at that price") 
+```
+
+
+```{r}
+library(tidymodels)
+
+set.seed(123)
+sf_split <- model_data %>%
+  select(-post_id,-city,-county,-address,-title,-details,-date) %>%
+  mutate(descr = str_to_lower(descr)) %>%
+  initial_split(strata = price)
+sf_train <- training(sf_split)
+sf_test <- testing(sf_split)
+sf_metrics <- metric_set(accuracy, roc_auc, mn_log_loss)
+
+set.seed(234)
+sf_folds <- vfold_cv(sf_train, v = 5, strata = price)
+higher_pat <- glue::glue_collapse(higher_words, sep = "|")
+lower_pat <- glue::glue_collapse(lower_words, sep = "|")
+
+sf_rec <-
+  recipe(price ~ ., data = sf_train) %>%
+  step_regex(descr, pattern = higher_pat, result = "high_price_words") %>%
+  step_regex(descr, pattern = lower_pat, result = "low_price_words") %>%
+  step_rm(descr) %>%
+  step_novel(nhood) %>%
+  step_unknown(nhood) %>%
+  step_other(nhood, threshold = 0.02) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_nzv(all_predictors())
+
+
+
+mset <- metric_set(rmse)
+grid_control <- control_grid(save_pred = TRUE,
+                             save_workflow = TRUE,
+                             extract = extract_model)
+
+xg_mod <- boost_tree("regression",
+                     mtry = tune(),
+                     trees = tune(),
+                     learn_rate = tune()) %>%
+                    set_engine("xgboost")
+xg_wf <- workflow() %>%
+  add_recipe(sf_rec) %>%
+  add_model(xg_mod)
+
+
+xg_tune <- xg_wf %>%
+  tune_grid(sf_folds,
+            metrics = mset,
+            control = grid_control,
+            grid = crossing(mtry = c(9),
+                            trees = seq(150, 1500, 15),
+                            learn_rate = c(0.001,.005,.008 ,.05,.01)))
+
+autoplot(xg_tune)
+
+```
+
+
+```{r}
+xg_tune %>%
+  collect_metrics() %>%
+  arrange(mean)
+
+xg_fit <- xg_wf %>%
+  finalize_workflow(select_best(xg_tune)) %>%
+  fit(sf_train)
+
+xg_fit %>%
+  augment(sf_test) %>%
+  rmse(price, .pred)
+
+importances <- xgboost::xgb.importance(model = xg_fit$fit$fit$fit)
+
+importances %>%
+  mutate(Feature = fct_reorder(Feature, Gain)) %>%
+  ggplot(aes(Gain, Feature)) +
+  geom_col()
+```
+
