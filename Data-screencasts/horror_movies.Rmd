@@ -267,7 +267,6 @@ relation_words %>%
 
 ```{r}
 relation_words<-data_model %>%
-  group_by(title) %>%
   unnest_tokens(word,overview) %>%
   filter(!word %in% bw) %>%
   filter(!str_detect(word,'[0-9]+')) %>%
@@ -279,7 +278,7 @@ relation_words<-data_model %>%
 
 
 relation_words %>%
-  pairwise_similarity(title,word,word_total, sort=TRUE,upper=FALSE) %>%
+  pairwise_similarity(title,word,popularity, sort=TRUE,upper=FALSE) %>%
   distinct(item1,.keep_all = TRUE) %>%
   head(100) %>%
   filter(!is.na(similarity)) %>%
